@@ -39,8 +39,14 @@ usually empty for city-level keywords, so the live SERP is the better signal.
 - **High Ads / Low Organic** preset: CPC ≥ $5, Ads Index ≥ 50, Organic Difficulty ≤ 30 (adjust the fields as needed)
 - Search, state, min population / searches / CPC / ads index / score, max organic difficulty, organic competition level
 - Click a header to sort; tick rows to copy or export only those rows
-- **Copy** puts tab-separated rows on the clipboard, so they paste into Sheets/Excel as columns. **Export CSV** and **Export Excel** download files.
-- Exports include only the visible columns and follow your current filters and sort
+- **Download full report (Excel)** creates one workbook with:
+  - **Summary**: niche snapshot (US volume, CPC, bids, ads competition, KD), coverage counts, top 10 opportunities, the filters you used, and how to read the numbers
+  - **Shortlist**: the cities left after your filters or row selection (only included when you filtered or selected rows)
+  - **All Cities**: every city and every column, sorted by score, with color-coded score/competition, $ formats, frozen header, autofilter, column tooltips and clickable Google links
+  - **Keyword Variants**: national data for each variant with 12 monthly values
+  - **SERP Details**: per city, the weak domains, local competitors, map pack, ads and the top 10 domains
+- **Copy** puts tab-separated rows on the clipboard, so they paste into Sheets/Excel as columns. **Export CSV** and **Export table (Excel)** download only the table.
+- Table exports include only the visible columns and follow your current filters and sort
 - Each finished report is saved in your browser; reopen it from **Saved reports** without paying again
 
 ## Setup
@@ -68,6 +74,6 @@ npm run lint
 npm run build
 ```
 
-Code map: `lib/dataforseo.ts` (API client + parsers), `lib/scoring.ts` (difficulty, score, city rows),
+Code map: `lib/dataforseo.ts` (API client + parsers), `lib/scoring.ts` (difficulty, score, city rows), `lib/reportWorkbook.ts` (full Excel report), `lib/reportColumns.ts` (column definitions),
 `lib/cities.ts` (216 largest US cities), `lib/mock.ts` (demo data), `app/api/*` (server routes),
 `components/*` (UI).

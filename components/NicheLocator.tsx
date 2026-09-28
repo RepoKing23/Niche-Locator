@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import ResultsTable from "./ResultsTable";
 import SnapshotPanel from "./SnapshotPanel";
 import { CITIES, STATE_CODES, findCity } from "@/lib/cities";
+import { downloadBlob } from "@/lib/export";
 import { chunk, cleanKeyword, suggestVariants } from "@/lib/keywords";
 import { buildCityRow } from "@/lib/scoring";
 import type { CityRow, LocalDemand, NicheSnapshot, Report, SerpInfo } from "@/lib/types";
@@ -207,13 +208,6 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
     finish();
   };
 
-  const fetchLocal = async (cityIds: string[]) => {
-    if (!report) return;
-    cancelRef.current = false;
-    await runLocals(report.snapshot.variants.map((v) => v.keyword), cityIds, report.mode === "live");
-    finish();
-  };
-
   const rows: CityRow[] = useMemo(() => {
     if (!report) return [];
     return report.cityIds.flatMap((id) => {
@@ -223,6 +217,36 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
       return [buildCityRow(city, report.snapshot, report.primaryKeyword, report.serps[id] ?? null, report.locals[id] ?? null, status)];
     });
   }, [report]);
+
+  const exportReport = async (view: CityRow[], filters: string[]) => {
+    if (!report) return;
+    const res = await fetch("/api/export/report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        niche: report.niche,
+        mode: report.mode,
+        createdAt: report.createdAt,
+        spent: report.spent,
+        snapshot: report.snapshot,
+        rows,
+        view,
+        filters,
+        serps: report.serps,
+      }),
+    });
+    if (!res.ok) throw new Error("Report export failed.");
+    const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? "niche-report.xlsx";
+    downloadBlob(await res.blob(), name);
+  };
+
+  const fetchLocal = async (cityIds: string[]) => {
+    if (!report) return;
+    cancelRef.current = false;
+    await runLocals(report.snapshot.variants.map((v) => v.keyword), cityIds, report.mode === "live");
+    finish();
+  };
+
 
   const busy = progress !== null;
 
@@ -355,7 +379,8 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
       {report && (
         <>
           <SnapshotPanel snapshot={report.snapshot} mode={report.mode} spent={report.spent} />
-          <ResultsTable niche={report.niche} rows={rows} busy={busy} onRecheckSerp={recheckSerp} onFetchLocal={fetchLocal} />
+          <ResultsTable niche={report.niche} rows={rows} busy={busy} onRecheckSerp={recheckSerp} onFetchLocal={fetchLocal}
+            onExportReport={exportReport} />
         </>
       )}
     </div>

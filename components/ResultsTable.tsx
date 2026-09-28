@@ -31,9 +31,11 @@ type Props = {
   busy: boolean;
   onRecheckSerp: (cityIds: string[]) => void;
   onFetchLocal: (cityIds: string[]) => void;
+  /** Download the full multi-sheet report; `view` = rows shown (or selected), `filters` = readable filter list. */
+  onExportReport: (view: CityRow[], filters: string[]) => Promise<void>;
 };
 
-export default function ResultsTable({ niche, rows, busy, onRecheckSerp, onFetchLocal }: Props) {
+export default function ResultsTable({ niche, rows, busy, onRecheckSerp, onFetchLocal, onExportReport }: Props) {
   const [filters, setFilters] = useState<Filters>(EMPTY);
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "score", dir: "desc" });
   const [visible, setVisible] = useState<Set<string>>(
@@ -42,6 +44,7 @@ export default function ResultsTable({ niche, rows, busy, onRecheckSerp, onFetch
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState("");
   const [showColumns, setShowColumns] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const states = useMemo(() => [...new Set(rows.map((r) => r.stateCode))].sort(), [rows]);
   const columns = COLUMNS.filter((c) => visible.has(c.key));
@@ -116,6 +119,20 @@ export default function ResultsTable({ niche, rows, busy, onRecheckSerp, onFetch
       return n;
     });
 
+  const exportReport = async () => {
+    const view = selected.size ? filtered.filter((r) => selected.has(r.id)) : filtered;
+    const list = describeFilters(filters);
+    if (selected.size) list.push(`Selected rows: ${view.length}`);
+    setExporting(true);
+    try {
+      await onExportReport(view, list);
+    } catch (e) {
+      flash((e as Error).message || "Report export failed.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const selectedIds = [...selected];
   const presetActive = Object.entries(PRESET).every(([k, v]) => filters[k as keyof Filters] === v);
 
@@ -180,7 +197,11 @@ export default function ResultsTable({ niche, rows, busy, onRecheckSerp, onFetch
         <div className="ml-auto flex flex-wrap gap-2">
           <button className="btn" onClick={copy}>Copy {selected.size ? "selected" : "table"}</button>
           <button className="btn" onClick={exportCsv}>Export CSV</button>
-          <button className="btn" onClick={exportXlsx}>Export Excel</button>
+          <button className="btn-primary" disabled={exporting} onClick={exportReport}
+            title="Excel workbook: Summary, Shortlist (current filters), All Cities, Keyword Variants, SERP Details">
+            {exporting ? "Preparing report…" : "Download full report (Excel)"}
+          </button>
+          <button className="btn" onClick={exportXlsx}>Export table (Excel)</button>
           <button className="btn" disabled={busy || !selected.size} onClick={() => onFetchLocal(selectedIds)}
             title="Google Ads volume/CPC targeted to each selected city (~$0.09 per city, ~5s each)">
             Get exact city volume
@@ -242,6 +263,21 @@ export default function ResultsTable({ niche, rows, busy, onRecheckSerp, onFetch
       </div>
     </section>
   );
+}
+
+/** Human-readable list of active filters for the report's Summary sheet. */
+function describeFilters(f: Filters): string[] {
+  const out: string[] = [];
+  if (f.search.trim()) out.push(`Search: "${f.search.trim()}"`);
+  if (f.states.length) out.push(`States: ${f.states.join(", ")}`);
+  if (f.minPopulation !== "") out.push(`Population ≥ ${f.minPopulation.toLocaleString("en-US")}`);
+  if (f.minVolume !== "") out.push(`Monthly searches ≥ ${f.minVolume}`);
+  if (f.minCpc !== "") out.push(`CPC ≥ $${f.minCpc}`);
+  if (f.minAdsIndex !== "") out.push(`Ads index ≥ ${f.minAdsIndex}`);
+  if (f.maxOrganic !== "") out.push(`Organic difficulty ≤ ${f.maxOrganic}`);
+  if (f.minScore !== "") out.push(`Opportunity score ≥ ${f.minScore}`);
+  if (f.organic.length) out.push(`Organic competition: ${f.organic.join(", ")}`);
+  return out;
 }
 
 /** Sort comparator; empty values always go last. */
