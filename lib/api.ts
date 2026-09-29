@@ -1,7 +1,25 @@
 /** Browser helpers for the app's DataForSEO API routes. */
 
 /** Approximate DataForSEO cost per unit (USD) for estimates shown in the UI. */
-export const PRICES = { niche: 0.1, serp: 0.002, local: 0.09 };
+export const PRICES = {
+  niche: 0.1,
+  serp: 0.002,
+  serpQueued: 0.0006,
+  kdRequest: 0.01,
+  kdKeyword: 0.0001,
+  local: 0.09,
+};
+
+/** Estimated DataForSEO cost of organic data for n cities (before cache hits). */
+export function organicCost(mode: "kd" | "queued" | "live" | "estimate", n: number): number {
+  if (mode === "estimate" || n === 0) return 0;
+  const kd = Math.ceil(n / 1000) * PRICES.kdRequest + n * PRICES.kdKeyword;
+  if (mode === "kd") return kd;
+  return kd + n * (mode === "queued" ? PRICES.serpQueued : PRICES.serp);
+}
+
+/** Polling interval for queued SERP tasks. */
+export const QUEUE_POLL_MS = { live: 20_000, demo: 800 };
 /** Google Ads live endpoints allow 12 requests/minute per account. */
 export const LOCAL_INTERVAL_MS = 5200;
 export const SERP_BATCH = 20;

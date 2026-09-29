@@ -1,5 +1,6 @@
 import { getBrowserSupabase } from "../supabase/client";
 import { supabaseConfigured } from "../supabase/config";
+import { IdbCache } from "../cacheIdb";
 import { LocalStore } from "./local";
 import { SupabaseStore } from "./supabase";
 import type { Store } from "./types";
@@ -10,6 +11,6 @@ let store: Store | null = null;
 
 /** Browser-side store: Supabase when configured, otherwise this browser's localStorage. */
 export function getStore(): Store {
-  store ??= supabaseConfigured ? new SupabaseStore(getBrowserSupabase()) : new LocalStore(window.localStorage);
+  store ??= supabaseConfigured ? new SupabaseStore(getBrowserSupabase()) : new LocalStore(window.localStorage, new IdbCache());
   return store;
 }

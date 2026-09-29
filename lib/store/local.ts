@@ -1,3 +1,4 @@
+import { CACHE_MAX_AGE_DAYS, MemoryCache, fresh, type CacheBackend, type CacheKind } from "../cache";
 import type { KeywordList, ListItem, NewListItem, Report, SavedReportMeta } from "../types";
 import { itemKey, type Store } from "./types";
 
@@ -15,7 +16,17 @@ const uid = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.ra
 /** Stores everything as JSON in this browser's localStorage. */
 export class LocalStore implements Store {
   kind = "local" as const;
-  constructor(private kv: KV) {}
+  constructor(private kv: KV, private cache: CacheBackend = new MemoryCache()) {}
+
+  async getCached(kind: CacheKind, keys: string[], maxAgeDays = CACHE_MAX_AGE_DAYS) {
+    const hits = fresh(await this.cache.getMany(keys.map((k) => `${kind}:${k}`)), maxAgeDays);
+    return new Map([...hits].map(([k, e]) => [k.slice(kind.length + 1), e.data]));
+  }
+
+  async putCached(kind: CacheKind, entries: [string, unknown][]) {
+    const at = Date.now();
+    await this.cache.putMany(entries.map(([k, data]) => [`${kind}:${k}`, { data, at }]));
+  }
 
   private read<T>(key: string, fallback: T): T {
     try {

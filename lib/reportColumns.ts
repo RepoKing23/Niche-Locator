@@ -1,4 +1,5 @@
 import type { Cell } from "./export";
+import { organicSourceOf } from "./scoring";
 import type { CityRow } from "./types";
 
 /** Data-only column definition shared by the UI table and the Excel report. */
@@ -52,8 +53,8 @@ export const COLUMN_DEFS: ColumnDef[] = [
     help: "0-100 difficulty from the live Google top 10 in that city (weak sites vs. city-targeted competitors, map pack reviews).",
     value: (r) => r.organicDifficulty },
   { key: "organicSource", label: "Organic Source", defaultVisible: false,
-    help: "Live SERP = checked in Google for that city; Estimated = from niche difficulty and city size",
-    value: (r) => (r.organicDifficulty == null ? null : r.organicEstimated ? "Estimated" : "Live SERP") },
+    help: "Live SERP = checked in Google for that city; City KD = DataForSEO keyword difficulty for \"keyword + city\"; Estimated = from niche difficulty and city size",
+    value: (r) => organicSourceOf(r) },
   { key: "organic", label: "Organic Comp.", defaultVisible: true, help: "Low < 30 ≤ Medium < 60 ≤ High",
     value: (r) => r.organic },
   { key: "weakResults", label: "Weak in Top 10", numeric: true, defaultVisible: true,

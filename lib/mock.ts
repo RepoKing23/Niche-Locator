@@ -76,3 +76,14 @@ export function mockSerp(keyword: string, location: string, city: City) {
   ];
   return { serp: parseSerp(keyword, location, city.name, items), cost: 0 };
 }
+
+/**
+ * Fake city keyword difficulty: mostly low-to-mid values that rise loosely with city size,
+ * with ~40% of phrases returning no data (like real Labs coverage for local keywords).
+ */
+export function mockCityDifficulty(keyword: string, city: City): number | null {
+  const r = rand(`${keyword}|${city.id}|kd`);
+  if (r < 0.4) return null;
+  const size = Math.min(1, Math.log10(Math.max(city.population, 10_000) / 10_000) / Math.log10(800));
+  return Math.round(Math.min(100, rand(`${keyword}|${city.id}|kd2`) * 45 + size * 30));
+}

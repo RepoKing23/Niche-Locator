@@ -5,12 +5,14 @@ import CityPicker from "./CityPicker";
 import DataTable, { type ActionContext } from "./DataTable";
 import SaveToList from "./SaveToList";
 import SnapshotPanel from "./SnapshotPanel";
-import { LOCAL_INTERVAL_MS, PRICES, SERP_BATCH, SERP_PARALLEL, postJson, sleep } from "@/lib/api";
+import { LOCAL_INTERVAL_MS, PRICES, QUEUE_POLL_MS, organicCost, postJson, sleep } from "@/lib/api";
+import { cacheKey } from "@/lib/cache";
+import { collectQueued, getCityKd, getLiveSerps, getLocal, getQueuedSerps, pendingTasks, type Batch } from "@/lib/fetchers";
 import { CITIES, findCity } from "@/lib/cities";
-import { chunk, cleanKeyword, suggestVariants } from "@/lib/keywords";
+import { cleanKeyword, suggestVariants } from "@/lib/keywords";
 import { buildCityRow } from "@/lib/scoring";
 import { getStore } from "@/lib/store";
-import type { CityRow, LocalDemand, NicheSnapshot, Report, SavedReportMeta, SerpInfo } from "@/lib/types";
+import type { CityRow, NicheSnapshot, OrganicMode, Report, SavedReportMeta, SerpInfo } from "@/lib/types";
 
 const CITY_SELECTION_KEY = "niche-locator:selected-cities";
 const DEFAULT_CITY_IDS = CITIES.slice(0, 50).map((c) => c.id);
@@ -48,13 +50,21 @@ function parseSelection(raw: string): Set<string> {
 }
 
 
+const ORGANIC_MODES: { value: OrganicMode; label: string; hint: string }[] = [
+  { value: "kd", label: "City keyword difficulty", hint: "DataForSEO Labs, ~$0.0001/city (cheapest real data)" },
+  { value: "queued", label: "Queued SERP check", hint: "live top-10 analysis, ~$0.0006/city, results in 1–5 min" },
+  { value: "live", label: "Live SERP check", hint: "same analysis, ~$0.002/city, results in seconds" },
+  { value: "estimate", label: "Estimate only", hint: "free, by city size" },
+];
+
 export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
   const [niche, setNiche] = useState("");
   const [variantsText, setVariantsText] = useState("");
   const [variantsEdited, setVariantsEdited] = useState(false);
   const [primaryIdx, setPrimaryIdx] = useState(0);
   const [exactLocal, setExactLocal] = useState(false);
-  const [liveSerp, setLiveSerp] = useState(true);
+  const [organicMode, setOrganicMode] = useState<OrganicMode>("kd");
+  const [refresh, setRefresh] = useState(false);
   const [showPicker, setShowPicker] = useState(true);
 
   const selectionRaw = useSyncExternalStore(subscribeSelection, readSelectionRaw, () => "");
@@ -101,10 +111,10 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
     }
   };
 
-  const estCost = PRICES.niche + (liveSerp ? cityIds.length * PRICES.serp : 0) + (exactLocal ? cityIds.length * PRICES.local : 0);
+  const estCost = PRICES.niche + organicCost(organicMode, cityIds.length) + (exactLocal ? cityIds.length * PRICES.local : 0);
   const estMinutes = exactLocal
     ? Math.ceil((cityIds.length * LOCAL_INTERVAL_MS) / 60000)
-    : Math.max(1, Math.ceil(cityIds.length / (SERP_BATCH * SERP_PARALLEL) / 4));
+    : organicMode === "queued" ? 5 : Math.max(1, Math.ceil(cityIds.length / 400));
 
   const saveReport = useCallback(async (r: Report) => {
     try {
@@ -115,55 +125,92 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
     }
   }, [refreshSaved]);
 
-  /** Live SERP checks, SERP_BATCH cities per request, SERP_PARALLEL requests in flight. */
-  const runSerps = useCallback(async (keyword: string, ids: string[]) => {
-    const batches = chunk(ids, SERP_BATCH);
-    let done = 0;
-    setProgress({ label: "Checking live Google results", done, total: ids.length });
-    for (const group of chunk(batches, SERP_PARALLEL)) {
-      if (cancelRef.current) return;
-      await Promise.all(
-        group.map(async (batch) => {
-          try {
-            const r = await postJson<{ results: Record<string, SerpInfo>; errors: Record<string, string>; cost: number }>(
-              "/api/serp", { keyword, cityIds: batch },
-            );
-            updateReport((prev) => prev && ({
-              ...prev,
-              serps: { ...prev.serps, ...r.results },
-              errors: { ...Object.fromEntries(Object.entries(prev.errors).filter(([k]) => !(k in r.results))), ...r.errors },
-              spent: prev.spent + r.cost,
-            }));
-          } catch (e) {
-            const msg = (e as Error).message;
-            updateReport((prev) => prev && ({ ...prev, errors: { ...prev.errors, ...Object.fromEntries(batch.map((id) => [id, msg])) } }));
-          }
-          done += batch.length;
-          setProgress({ label: "Checking live Google results", done, total: ids.length });
-        }),
-      );
-    }
+  const fetchOpts = useCallback(
+    (force = false) => ({ store: getStore(), refresh: force || refresh, shouldStop: () => cancelRef.current }),
+    [refresh],
+  );
+
+  /** Merge a batch of SERP results into the open report (only if it's for the report's keyword). */
+  const applySerpBatch = useCallback((b: Batch<SerpInfo>, keyword: string) => {
+    updateReport((prev) => prev && prev.primaryKeyword === keyword ? ({
+      ...prev,
+      serps: { ...prev.serps, ...b.results },
+      errors: { ...Object.fromEntries(Object.entries(prev.errors).filter(([k]) => !(k in b.results))), ...b.errors },
+      spent: prev.spent + b.cost,
+      cachedHits: (prev.cachedHits ?? 0) + b.cached,
+    }) : prev);
   }, [updateReport]);
 
-  /** Exact city-targeted Google Ads data, paced to Google's 12 requests/minute. */
-  const runLocals = useCallback(async (vars: string[], ids: string[], live: boolean) => {
+  /** City keyword difficulty for every city (cache first). */
+  const runKd = useCallback(async (keyword: string, ids: string[], force = false) => {
+    setProgress({ label: "Getting city keyword difficulty (DataForSEO Labs)", done: 0, total: ids.length });
+    updateReport((prev) => prev && { ...prev, kdPending: true });
+    const r = await getCityKd(keyword, ids, fetchOpts(force));
+    updateReport((prev) => prev && ({
+      ...prev,
+      kds: { ...prev.kds, ...r.results },
+      kdPending: false,
+      spent: prev.spent + r.cost,
+      cachedHits: (prev.cachedHits ?? 0) + r.cached,
+    }));
+    const failed = Object.keys(r.errors).length;
+    if (failed) setError(`Keyword difficulty unavailable for ${failed} cities (${Object.values(r.errors)[0]}). They keep the estimate.`);
+    setProgress({ label: "Getting city keyword difficulty (DataForSEO Labs)", done: ids.length, total: ids.length });
+  }, [fetchOpts, updateReport]);
+
+  /** SERP checks: live (fast) or queued (cheap). Cache first. */
+  const runSerps = useCallback(async (keyword: string, ids: string[], queued: boolean, force = false, demo = false) => {
+    let done = 0;
+    const label = queued ? "Queued SERP checks (cheaper) — waiting for DataForSEO" : "Checking live Google results";
+    setProgress({ label, done, total: ids.length });
+    updateReport((prev) => prev && { ...prev, serpPending: true });
+    const onBatch = (b: Batch<SerpInfo>) => {
+      applySerpBatch(b, keyword);
+      done += Object.keys(b.results).length + Object.keys(b.errors).length;
+      setProgress({ label, done, total: ids.length });
+    };
+    if (queued) {
+      await getQueuedSerps(keyword, ids, {
+        ...fetchOpts(force), pollMs: demo ? QUEUE_POLL_MS.demo : QUEUE_POLL_MS.live, onBatch,
+        onQueued: (_n, cost) => updateReport((prev) => prev && { ...prev, spent: prev.spent + cost }),
+      });
+    } else {
+      await getLiveSerps(keyword, ids, { ...fetchOpts(force), onBatch });
+    }
+    updateReport((prev) => prev && { ...prev, serpPending: false });
+  }, [applySerpBatch, fetchOpts, updateReport]);
+
+  /** Exact city-targeted Google Ads data, paced to Google's 12 requests/minute (cached cities are free and instant). */
+  const runLocals = useCallback(async (vars: string[], ids: string[], live: boolean, force = false) => {
     for (let i = 0; i < ids.length; i++) {
       if (cancelRef.current) return;
       setProgress({ label: "Fetching exact city search volume (Google Ads)", done: i, total: ids.length });
       const started = Date.now();
+      let cached = false;
       try {
-        const r = await postJson<{ demand: LocalDemand }>("/api/local", { variants: vars, cityId: ids[i] });
+        const r = await getLocal(vars, ids[i], fetchOpts(force));
+        cached = r.cached;
         updateReport((prev) => prev && ({
           ...prev,
           locals: { ...prev.locals, [ids[i]]: r.demand },
           spent: prev.spent + r.demand.cost,
+          cachedHits: (prev.cachedHits ?? 0) + (r.cached ? 1 : 0),
         }));
       } catch (e) {
         setError(`${findCity(ids[i])?.name}: ${(e as Error).message}`);
       }
-      if (live && i < ids.length - 1) await sleep(Math.max(0, LOCAL_INTERVAL_MS - (Date.now() - started)));
+      if (live && !cached && i < ids.length - 1) await sleep(Math.max(0, LOCAL_INTERVAL_MS - (Date.now() - started)));
     }
-  }, [updateReport]);
+  }, [fetchOpts, updateReport]);
+
+  // Collect queued SERP tasks left over from an earlier session (already paid; results go into the cache).
+  useEffect(() => {
+    const leftover = pendingTasks.list();
+    if (!leftover.length) return;
+    void collectQueued(leftover, {
+      store: getStore(), pollMs: mode === "demo" ? QUEUE_POLL_MS.demo : QUEUE_POLL_MS.live, onBatch: applySerpBatch,
+    });
+  }, [mode, applySerpBatch]);
 
   const finish = useCallback(() => {
     setProgress(null);
@@ -191,6 +238,9 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
     }
     updateReport(() => ({
       id: crypto.randomUUID(),
+      organicMode,
+      kds: {},
+      cachedHits: 0,
       mode: apiMode,
       niche: snapshot.niche,
       createdAt: new Date().toISOString(),
@@ -200,12 +250,48 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
       errors: {},
       cityIds,
       primaryKeyword,
-      serpSkipped: !liveSerp,
+      serpSkipped: organicMode === "kd" || organicMode === "estimate",
       spent: snapshot.cost,
     }));
-    if (liveSerp) await runSerps(primaryKeyword, cityIds);
-    if (exactLocal) await runLocals(variants, cityIds, apiMode === "live");
+    // KD first: cheap, and the fallback for any city a SERP check can't cover.
+    if (organicMode !== "estimate") await runKd(primaryKeyword, cityIds);
+    if (!cancelRef.current && (organicMode === "live" || organicMode === "queued")) {
+      await runSerps(primaryKeyword, cityIds, organicMode === "queued", false, apiMode === "demo");
+    }
+    if (exactLocal && !cancelRef.current) await runLocals(variants, cityIds, apiMode === "live");
     finish();
+  };
+
+  /** Free: fill a reopened report with any SERP/KD results collected since it was saved. */
+  const fillFromCache = async (r: Report) => {
+    const store = getStore();
+    const missSerp = r.cityIds.filter((id) => !r.serps[id]);
+    const missKd = r.cityIds.filter((id) => r.kds?.[id] === undefined);
+    try {
+      const [serps, kds] = await Promise.all([
+        missSerp.length ? store.getCached("serp", missSerp.map((id) => cacheKey.serp(r.primaryKeyword, id))) : new Map(),
+        missKd.length && r.organicMode && r.organicMode !== "estimate"
+          ? store.getCached("kd", missKd.map((id) => cacheKey.kd(r.primaryKeyword, id))) : new Map(),
+      ]);
+      const serpHits = Object.fromEntries(missSerp.flatMap((id) => {
+        const v = serps.get(cacheKey.serp(r.primaryKeyword, id));
+        return v ? [[id, v as SerpInfo]] : [];
+      }));
+      const kdHits = Object.fromEntries(missKd.flatMap((id) => {
+        const key = cacheKey.kd(r.primaryKeyword, id);
+        return kds.has(key) ? [[id, kds.get(key) as number | null]] : [];
+      }));
+      if (Object.keys(serpHits).length || Object.keys(kdHits).length) {
+        updateReport((prev) => prev && prev.id === r.id ? ({
+          ...prev,
+          serps: { ...prev.serps, ...serpHits },
+          errors: Object.fromEntries(Object.entries(prev.errors).filter(([k]) => !(k in serpHits))),
+          kds: { ...prev.kds, ...kdHits },
+        }) : prev);
+      }
+    } catch {
+      // cache is optional
+    }
   };
 
   const openSaved = async (id: string) => {
@@ -213,8 +299,9 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
     try {
       const r = await getStore().loadReport(id);
       if (r) {
-        updateReport(() => r);
+        updateReport(() => ({ ...r, serpPending: false, kdPending: false }));
         setShowPicker(false);
+        await fillFromCache(r);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -226,8 +313,12 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
     return report.cityIds.flatMap((id) => {
       const city = findCity(id);
       if (!city) return [];
-      const status = report.serps[id] ? "done" : report.errors[id] ? "error" : report.serpSkipped ? "skipped" : "pending";
-      return [buildCityRow(city, report.snapshot, report.primaryKeyword, report.serps[id] ?? null, report.locals[id] ?? null, status)];
+      const kd = report.kds?.[id];
+      const status = report.serps[id] ? "done"
+        : report.errors[id] ? "error"
+          : report.serpPending || (report.kdPending && kd === undefined) ? "pending"
+            : "skipped";
+      return [buildCityRow(city, report.snapshot, report.primaryKeyword, report.serps[id] ?? null, report.locals[id] ?? null, status, kd ?? null)];
     });
   }, [report]);
 
@@ -237,10 +328,11 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
     report?.mode !== "live" || count * each < 1 ||
     window.confirm(`${what} for ${count.toLocaleString()} cities costs about $${(count * each).toFixed(2)}. Continue?`);
 
+  /** Live SERP check for chosen rows; cached results are reused unless "refresh" is ticked. */
   const recheckSerp = async (ids: string[]) => {
-    if (!report || !confirmSpend(ids.length, PRICES.serp, "Re-checking SERPs")) return;
+    if (!report || !confirmSpend(ids.length, PRICES.serp, "Live SERP checks")) return;
     cancelRef.current = false;
-    await runSerps(report.primaryKeyword, ids);
+    await runSerps(report.primaryKeyword, ids, false, false, report.mode === "demo");
     finish();
   };
 
@@ -291,16 +383,16 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
               onChange={(e) => { setVariantsText(e.target.value); setVariantsEdited(true); }} />
           </label>
           <div className="flex flex-col justify-between gap-3">
-            <label className="flex items-start gap-2 text-sm">
-              <input type="checkbox" className="mt-1" checked={liveSerp} onChange={(e) => setLiveSerp(e.target.checked)} />
-              <span>
-                Live SERP check for every city
-                <span className="block text-xs text-zinc-500">
-                  ~$0.002 per city. Off = cheap estimate-only scan (~$0.10 total): save the cities you like to a list and run
-                  <b> Accurate data</b> on just those.
-                </span>
-              </span>
-            </label>
+            <fieldset className="space-y-1 text-sm">
+              <legend className="font-medium">Organic difficulty per city</legend>
+              {ORGANIC_MODES.map((m) => (
+                <label key={m.value} className="flex items-start gap-2">
+                  <input type="radio" name="organic-mode" className="mt-1" checked={organicMode === m.value}
+                    onChange={() => setOrganicMode(m.value)} />
+                  <span>{m.label} <span className="text-xs text-zinc-500">— {m.hint}</span></span>
+                </label>
+              ))}
+            </fieldset>
             <label className="flex items-start gap-2 text-sm">
               <input type="checkbox" className="mt-1" checked={exactLocal} onChange={(e) => setExactLocal(e.target.checked)} />
               <span>
@@ -311,10 +403,15 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
                 </span>
               </span>
             </label>
+            <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+              <input type="checkbox" checked={refresh} onChange={(e) => setRefresh(e.target.checked)} />
+              Refresh — ignore saved results (results under 30 days old are reused for free by default)
+            </label>
             <div className="rounded-md bg-zinc-50 p-3 text-sm dark:bg-zinc-800/60">
               <div>{cityIds.length.toLocaleString()} cities · {variants.length} variants</div>
               <div>
                 Est. cost: <b>{mode === "demo" ? "$0 (demo)" : `~$${estCost.toFixed(2)}`}</b> · ~{estMinutes} min
+                {!refresh && mode === "live" && <span className="block text-xs text-zinc-500">Less if some cities are already cached.</span>}
               </div>
             </div>
             <div className="flex gap-2">
@@ -362,6 +459,11 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
 
       {report && (
         <>
+          {(report.cachedHits ?? 0) > 0 && (
+            <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-200">
+              {report.cachedHits!.toLocaleString()} results reused from earlier checks — free.
+            </div>
+          )}
           <SnapshotPanel snapshot={report.snapshot} mode={report.mode} spent={report.spent} />
           <DataTable
             key={report.id}
@@ -381,8 +483,9 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
                   title="Google Ads volume/CPC targeted to each city (~$0.09 per city, ~5 s each)">
                   Exact city volume
                 </button>
-                <button className="btn" disabled={busy || !ctx.target.length} onClick={() => recheckSerp(ctx.target.map((r) => r.id))}>
-                  Re-check SERP
+                <button className="btn" disabled={busy || !ctx.target.length} onClick={() => recheckSerp(ctx.target.map((r) => r.id))}
+                  title="Live Google top-10 check (~$0.002/city; cached results reused)">
+                  Live SERP check
                 </button>
               </>
             )}

@@ -8,6 +8,9 @@ export const US_LOCATION_CODE = 2840;
 
 /** Approximate DataForSEO prices (USD) for cost estimates shown in the UI. */
 export const PRICES = {
+  serpQueuedTask: 0.0006,
+  cityKdRequest: 0.01,
+  cityKdPerKeyword: 0.0001,
   googleAdsRequest: 0.09,
   difficultyRequest: 0.0125,
   serpRequest: 0.002,
@@ -20,13 +23,17 @@ export function hasCredentials(): boolean {
   return Boolean(process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD);
 }
 
-type ApiTask<T> = { status_code: number; status_message: string; cost?: number; result: T[] | null };
+export type ApiTask<T> = {
+  id?: string; status_code: number; status_message: string; cost?: number; result: T[] | null;
+  data?: { tag?: string };
+};
 type ApiResponse<T> = { status_code: number; status_message: string; cost?: number; tasks?: ApiTask<T>[] };
 
 /** Errors that retrying won't fix (bad credentials, no balance, invalid task). */
 export class DataForSeoError extends Error {}
 
-async function post<T>(path: string, task: Record<string, unknown>): Promise<{ result: T[]; cost: number }> {
+/** Authenticated request with retries on network errors, 5xx and rate limits. Returns the raw response. */
+async function request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<ApiResponse<T>> {
   const auth = Buffer.from(
     `${process.env.DATAFORSEO_LOGIN}:${process.env.DATAFORSEO_PASSWORD}`,
   ).toString("base64");
@@ -34,9 +41,9 @@ async function post<T>(path: string, task: Record<string, unknown>): Promise<{ r
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const res = await fetch(`${API}${path}`, {
-        method: "POST",
+        method,
         headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
-        body: JSON.stringify([task]),
+        body: body === undefined ? undefined : JSON.stringify(body),
         cache: "no-store",
       });
       if (res.status === 401) throw new DataForSeoError("DataForSEO rejected the login/password.");
@@ -44,12 +51,9 @@ async function post<T>(path: string, task: Record<string, unknown>): Promise<{ r
       if (!res.ok) throw new Error(`DataForSEO HTTP ${res.status}`);
       const json = (await res.json()) as ApiResponse<T>;
       if (json.status_code !== 20000) throw new DataForSeoError(`DataForSEO: ${json.status_message}`);
-      const t = json.tasks?.[0];
-      if (!t) throw new DataForSeoError("DataForSEO returned no task.");
       // 40202 = rate limit exceeded; worth retrying after a pause.
-      if (t.status_code === 40202) throw new Error(t.status_message);
-      if (t.status_code !== 20000) throw new DataForSeoError(`DataForSEO: ${t.status_message}`);
-      return { result: t.result ?? [], cost: json.cost ?? t.cost ?? 0 };
+      if (json.tasks?.some((t) => t.status_code === 40202)) throw new Error("DataForSEO rate limit");
+      return json;
     } catch (err) {
       lastError = err;
       if (err instanceof DataForSeoError) throw err;
@@ -57,6 +61,15 @@ async function post<T>(path: string, task: Record<string, unknown>): Promise<{ r
     }
   }
   throw lastError;
+}
+
+/** POST a single live task and return its result. */
+async function post<T>(path: string, task: Record<string, unknown>): Promise<{ result: T[]; cost: number }> {
+  const json = await request<T>("POST", path, [task]);
+  const t = json.tasks?.[0];
+  if (!t) throw new DataForSeoError("DataForSEO returned no task.");
+  if (t.status_code !== 20000) throw new DataForSeoError(`DataForSEO: ${t.status_message}`);
+  return { result: t.result ?? [], cost: json.cost ?? t.cost ?? 0 };
 }
 
 export type SearchVolumeItem = {
@@ -178,4 +191,84 @@ export async function fetchSerp(keyword: string, location: string, cityName: str
     keyword, location_name: location, language_code: "en", depth: 10,
   });
   return { serp: parseSerp(keyword, location, cityName, result[0]?.items ?? []), cost };
+}
+
+/** "stair lift installer" + Austin → "stair lift installer austin" (the phrase people search). */
+export function cityKeyword(keyword: string, cityName: string): string {
+  return cleanKeyword(`${keyword} ${cityName}`);
+}
+
+export const MAX_KD_KEYWORDS = 1000;
+
+/** DataForSEO Labs keyword difficulty for city keywords (null when Labs has no data for a phrase). */
+export async function fetchCityDifficulty(keywords: string[]) {
+  const difficulty = new Map<string, number | null>();
+  let cost = 0;
+  for (let i = 0; i < keywords.length; i += MAX_KD_KEYWORDS) {
+    const r = await post<DifficultyResult>("/dataforseo_labs/google/bulk_keyword_difficulty/live", {
+      keywords: keywords.slice(i, i + MAX_KD_KEYWORDS), location_code: US_LOCATION_CODE, language_code: "en",
+    });
+    cost += r.cost;
+    for (const [k, v] of parseDifficulty(r.result)) difficulty.set(k, v);
+  }
+  return { difficulty, cost };
+}
+
+// ---- Standard-queue SERP checks (~3x cheaper than live; results fetched later for free) ----
+
+export const MAX_TASKS_PER_POST = 100;
+
+export type QueuedTask = { cityId: string; taskId: string };
+
+/** Queue one SERP task per city; `tag` carries the city id back. */
+export async function postSerpTasks(keyword: string, cities: { id: string; location: string }[]) {
+  const tasks: QueuedTask[] = [];
+  const errors: Record<string, string> = {};
+  let cost = 0;
+  for (let i = 0; i < cities.length; i += MAX_TASKS_PER_POST) {
+    const batch = cities.slice(i, i + MAX_TASKS_PER_POST);
+    const json = await request<unknown>("POST", "/serp/google/organic/task_post", batch.map((c) => ({
+      keyword, location_name: c.location, language_code: "en", depth: 10, tag: c.id,
+    })));
+    cost += json.cost ?? 0;
+    const parsed = parseTaskPost(json.tasks ?? [], batch.map((c) => c.id));
+    tasks.push(...parsed.tasks);
+    Object.assign(errors, parsed.errors);
+  }
+  return { tasks, errors, cost };
+}
+
+/** 20100 = task created. Tasks come back in request order; `data.tag` confirms the city. */
+export function parseTaskPost(apiTasks: ApiTask<unknown>[], cityIds: string[]) {
+  const tasks: QueuedTask[] = [];
+  const errors: Record<string, string> = {};
+  apiTasks.forEach((t, i) => {
+    const cityId = t.data?.tag ?? cityIds[i];
+    if (t.status_code === 20100 && t.id) tasks.push({ cityId, taskId: t.id });
+    else errors[cityId] = t.status_message || "Could not queue SERP check";
+  });
+  return { tasks, errors };
+}
+
+export type SerpTaskState =
+  | { state: "done"; items: SerpItem[] }
+  | { state: "pending" }
+  | { state: "error"; message: string };
+
+/** 20000 = ready; 40601 "Task Handed" / 40602 "Task in Queue" = still running. */
+export function parseSerpTask(task: ApiTask<{ items: SerpItem[] | null }> | undefined): SerpTaskState {
+  if (!task) return { state: "error", message: "Task not found" };
+  if (task.status_code === 20000) return { state: "done", items: task.result?.[0]?.items ?? [] };
+  if (task.status_code === 40601 || task.status_code === 40602) return { state: "pending" };
+  return { state: "error", message: task.status_message };
+}
+
+/** Fetch a queued SERP task's result. Retrieving results is free. */
+export async function getSerpTask(taskId: string): Promise<SerpTaskState> {
+  try {
+    const json = await request<{ items: SerpItem[] | null }>("GET", `/serp/google/organic/task_get/advanced/${encodeURIComponent(taskId)}`);
+    return parseSerpTask(json.tasks?.[0]);
+  } catch (err) {
+    return { state: "error", message: err instanceof Error ? err.message : "SERP task fetch failed" };
+  }
 }

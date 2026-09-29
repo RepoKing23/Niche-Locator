@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CITIES, STATE_CODES, dataForSeoLocationName, findCity, tierFor } from "@/lib/cities";
 import { suggestVariants, coreTerm } from "@/lib/keywords";
 import { mockNiche, mockSerp } from "@/lib/mock";
-import { accuracyLabel, buildCityRow, buildSnapshot, estimateCityVolume, estimateOrganicDifficulty, opportunityScore, organicLabel, refreshRow, serpDifficulty } from "@/lib/scoring";
+import { accuracyLabel, organicSourceOf, buildCityRow, buildSnapshot, estimateCityVolume, estimateOrganicDifficulty, opportunityScore, organicLabel, refreshRow, serpDifficulty } from "@/lib/scoring";
 
 describe("keywords", () => {
   it("derives variants from the niche", () => {
@@ -83,7 +83,7 @@ describe("refreshRow (accurate check on saved rows)", () => {
 
   it("starts as an estimate, with an estimated organic difficulty", () => {
     expect(accuracyLabel(estimated)).toBe("Estimated");
-    expect(estimated.organicEstimated).toBe(true);
+    expect(estimated.organicSource).toBe("Estimated");
     expect(estimated.organicDifficulty).toBe(estimateOrganicDifficulty(snap.difficulty, city.population));
     expect(estimated.organic).not.toBe("Unknown");
   });
@@ -117,5 +117,44 @@ describe("refreshRow (accurate check on saved rows)", () => {
     expect(accuracyLabel(r)).toBe("Exact");
     const priced = refreshRow(withSerp, { local: { searchVolume: 70, cpc: 18.5, lowBid: null, highBid: null, competitionIndex: null, trend: [], cost: 0 } });
     expect(priced).toMatchObject({ cpc: 18.5, cpcSource: "City", lowBid: withSerp.lowBid });
+  });
+});
+
+describe("organic source precedence (SERP > city KD > estimate)", () => {
+  const city = findCity("tampa-fl")!;
+  const snap = buildSnapshot("stair lift installer", mockNiche(["stair lift installer"]).metrics, 0);
+  const { serp } = mockSerp("stair lift installer", "Tampa,Florida,United States", city);
+
+  it("uses city KD when there is no SERP result", () => {
+    const r = buildCityRow(city, snap, "stair lift installer", null, null, "skipped", 22);
+    expect(r).toMatchObject({ organicDifficulty: 22, organicSource: "City KD", organic: "Low" });
+    expect(accuracyLabel(r)).toBe("KD checked");
+  });
+
+  it("falls back to the estimate when KD is null", () => {
+    const r = buildCityRow(city, snap, "stair lift installer", null, null, "skipped", null);
+    expect(r.organicSource).toBe("Estimated");
+  });
+
+  it("prefers the live SERP over KD", () => {
+    const r = buildCityRow(city, snap, "stair lift installer", serp, null, "done", 5);
+    expect(r).toMatchObject({ organicDifficulty: serp.difficulty, organicSource: "Live SERP" });
+  });
+
+  it("refreshRow: KD upgrades an estimate but never replaces a SERP result", () => {
+    const est = buildCityRow(city, snap, "stair lift installer", null, null, "skipped");
+    expect(refreshRow(est, { cityKd: 12 })).toMatchObject({ organicDifficulty: 12, organicSource: "City KD" });
+    const withSerp = refreshRow(est, { serp });
+    expect(refreshRow(withSerp, { cityKd: 3 })).toMatchObject({ organicDifficulty: serp.difficulty, organicSource: "Live SERP" });
+    expect(refreshRow(est, { cityKd: null }).organicSource).toBe("Estimated");
+  });
+
+  it("reads rows saved before organicSource existed", () => {
+    const base = buildCityRow(city, snap, "stair lift installer", serp, null, "done");
+    const legacyLive = { ...base, organicSource: undefined, organicEstimated: false };
+    const legacyEst = { ...base, organicSource: undefined, organicEstimated: true };
+    expect(organicSourceOf(legacyLive)).toBe("Live SERP");
+    expect(organicSourceOf(legacyEst)).toBe("Estimated");
+    expect(refreshRow(legacyEst, {}).organicEstimated).toBeUndefined();
   });
 });

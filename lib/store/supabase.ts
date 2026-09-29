@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { chunk } from "../keywords";
+import { CACHE_MAX_AGE_DAYS, type CacheKind } from "../cache";
 import type { KeywordList, ListItem, NewListItem, Report, SavedReportMeta } from "../types";
 import type { Store } from "./types";
 
@@ -114,5 +115,26 @@ export class SupabaseStore implements Store {
 
   async deleteReport(id: string) {
     check(await this.db.from("reports").delete().eq("id", id));
+  }
+
+  async getCached(kind: CacheKind, keys: string[], maxAgeDays = CACHE_MAX_AGE_DAYS) {
+    const out = new Map<string, unknown>();
+    const since = new Date(Date.now() - maxAgeDays * 86_400_000).toISOString();
+    for (const batch of chunk([...new Set(keys)], 200)) {
+      const rows = check(await this.db.from("api_cache").select("key, data")
+        .eq("kind", kind).in("key", batch).gte("created_at", since));
+      (rows as { key: string; data: unknown }[]).forEach((r) => out.set(r.key, r.data));
+    }
+    return out;
+  }
+
+  async putCached(kind: CacheKind, entries: [string, unknown][]) {
+    const now = new Date().toISOString();
+    for (const batch of chunk(entries, 500)) {
+      check(await this.db.from("api_cache").upsert(
+        batch.map(([key, data]) => ({ kind, key, data, created_at: now })),
+        { onConflict: "kind,key" },
+      ));
+    }
   }
 }

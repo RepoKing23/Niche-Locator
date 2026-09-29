@@ -1,3 +1,4 @@
+import type { CacheKind } from "../cache";
 import type { KeywordList, ListItem, NewListItem, Report, SavedReportMeta } from "../types";
 
 /** Persistence for keyword lists and saved reports (Supabase or this browser). */
@@ -18,6 +19,9 @@ export interface Store {
   saveReport(report: Report): Promise<void>;
   loadReport(id: string): Promise<Report | null>;
   deleteReport(id: string): Promise<void>;
+  /** Cached DataForSEO results younger than maxAgeDays, by key (value may be null = cached "no data"). */
+  getCached(kind: CacheKind, keys: string[], maxAgeDays?: number): Promise<Map<string, unknown>>;
+  putCached(kind: CacheKind, entries: [string, unknown][]): Promise<void>;
 }
 
 export function itemKey(i: { niche: string; cityId: string; keyword: string }) {

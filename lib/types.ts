@@ -2,6 +2,12 @@ export type Competition = "LOW" | "MEDIUM" | "HIGH";
 
 export type OrganicLabel = "Low" | "Medium" | "High" | "Unknown";
 
+/** How a research run gathers organic difficulty, cheapest last. */
+export type OrganicMode = "kd" | "queued" | "live" | "estimate";
+
+/** Where a row's organic difficulty came from, most to least accurate. */
+export type OrganicSource = "Live SERP" | "City KD" | "Estimated";
+
 /** Google Ads metrics for one keyword (national or city-targeted). */
 export type KeywordMetrics = {
   keyword: string;
@@ -80,7 +86,8 @@ export type CityRow = {
   competitionIndex: number | null;
   nicheDifficulty: number | null;
   organicDifficulty: number | null;
-  /** True when organicDifficulty is an estimate (no live SERP check yet). */
+  organicSource?: OrganicSource;
+  /** @deprecated legacy flag on rows saved before organicSource existed; read via organicSourceOf(). */
   organicEstimated?: boolean;
   organic: OrganicLabel;
   weakResults: number | null;
@@ -110,6 +117,15 @@ export type Report = {
   primaryKeyword: string;
   /** Estimate-only scan: no live SERP check was run for the cities. */
   serpSkipped?: boolean;
+  /** How organic difficulty was gathered for this report. */
+  organicMode?: OrganicMode;
+  /** City keyword difficulty per city (null = no Labs data for that phrase). */
+  kds?: Record<string, number | null>;
+  /** True while SERP / KD results are still being collected. */
+  serpPending?: boolean;
+  kdPending?: boolean;
+  /** Results reused from the cache (free) in this report. */
+  cachedHits?: number;
   spent: number;
 };
 

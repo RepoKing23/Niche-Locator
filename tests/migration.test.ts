@@ -79,4 +79,15 @@ describe("supabase migration", () => {
     await as(USER_A, "delete from keyword_lists");
     expect((await as(USER_A, "select * from list_items")).rows).toHaveLength(0);
   });
+
+  it("shares the result cache between signed-in users", async () => {
+    await as(USER_A, "insert into api_cache (kind, key, data) values ('kd', 'plumber|austin-tx', '7')");
+    await as(USER_A, "insert into api_cache (kind, key, data) values ('kd', 'plumber|tiny-vt', null)");
+    const seen = await as(USER_B, "select key, data from api_cache order by key");
+    expect(seen.rows).toEqual([{ key: "plumber|austin-tx", data: 7 }, { key: "plumber|tiny-vt", data: null }]);
+    await as(USER_B, `insert into api_cache (kind, key, data) values ('kd', 'plumber|austin-tx', '9')
+      on conflict (kind, key) do update set data = excluded.data, created_at = now()`);
+    expect((await as(USER_A, "select data from api_cache where key = 'plumber|austin-tx'")).rows[0].data).toBe(9);
+    await expect(as(USER_A, "insert into api_cache (kind, key, data) values ('bogus', 'x', '1')")).rejects.toThrow();
+  });
 });

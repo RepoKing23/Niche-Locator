@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { COLUMN_DEFS, googleUrl, type ColumnDef } from "@/lib/reportColumns";
+import { organicSourceOf } from "@/lib/scoring";
 import type { CityRow } from "@/lib/types";
 
 export type Column = ColumnDef & { render?: (r: CityRow) => ReactNode };
@@ -40,6 +41,13 @@ function ScoreCell({ score }: { score: number }) {
 const money = (n: number | null) => (n == null ? "—" : `$${n.toFixed(2)}`);
 const int = (n: number | null) => (n == null ? "—" : n.toLocaleString("en-US"));
 
+/** Small marker showing where an organic difficulty value came from (live SERP values have none). */
+const SOURCE_TAG = {
+  "Live SERP": { text: "", title: "From the live Google top 10 in this city" },
+  "City KD": { text: "KD", title: "DataForSEO keyword difficulty for “keyword + city” — run a live SERP check for full detail" },
+  Estimated: { text: "est.", title: "Estimated from niche difficulty and city size — no city data yet" },
+} as const;
+
 /** UI renderers; columns without one show their raw value. */
 const RENDER: Record<string, (r: CityRow) => ReactNode> = {
   score: (r) => <ScoreCell score={r.score} />,
@@ -64,20 +72,25 @@ const RENDER: Record<string, (r: CityRow) => ReactNode> = {
       <Badge tone={r.competition === "HIGH" ? "good" : r.competition === "MEDIUM" ? "mid" : "bad"}>{r.competition}</Badge>
     ) : "—",
   competitionIndex: (r) => int(r.competitionIndex),
-  organicDifficulty: (r) =>
-    r.status === "pending" ? <span className="text-zinc-400">…</span>
-      : r.organicDifficulty == null ? <span className="text-zinc-400" title="Not checked yet — run a live SERP check">—</span>
-        : r.organicEstimated ? (
-          <span title="Estimated from niche difficulty and city size — run a live SERP check for the real value">
-            {int(r.organicDifficulty)}<span className="ml-1 text-xs text-zinc-400">est.</span>
-          </span>
-        ) : int(r.organicDifficulty),
-  organic: (r) => (
-    <Badge tone={r.organic === "Low" ? "good" : r.organic === "Medium" ? "mid" : r.organic === "High" ? "bad" : "none"}>
-      {r.status === "error" ? "Error" : r.organic}
-      {r.status !== "error" && r.organicEstimated && r.organic !== "Unknown" && <span className="ml-1 opacity-60">est.</span>}
-    </Badge>
-  ),
+  organicDifficulty: (r) => {
+    if (r.status === "pending") return <span className="text-zinc-400">…</span>;
+    if (r.organicDifficulty == null) return <span className="text-zinc-400" title="Not checked yet">—</span>;
+    const tag = SOURCE_TAG[organicSourceOf(r) ?? "Estimated"];
+    return (
+      <span title={tag.title}>
+        {int(r.organicDifficulty)}{tag.text && <span className="ml-1 text-xs text-zinc-400">{tag.text}</span>}
+      </span>
+    );
+  },
+  organic: (r) => {
+    const tag = SOURCE_TAG[organicSourceOf(r) ?? "Estimated"];
+    return (
+      <Badge tone={r.organic === "Low" ? "good" : r.organic === "Medium" ? "mid" : r.organic === "High" ? "bad" : "none"}>
+        {r.status === "error" ? "Error" : r.organic}
+        {r.status !== "error" && tag.text && r.organic !== "Unknown" && <span className="ml-1 opacity-60">{tag.text}</span>}
+      </Badge>
+    );
+  },
   weakResults: (r) => int(r.weakResults),
   cityRelevant: (r) => int(r.cityRelevant),
   localPackTopReviews: (r) => int(r.localPackTopReviews),

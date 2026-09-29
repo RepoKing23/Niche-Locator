@@ -1,6 +1,6 @@
 import type { City } from "./cities";
 import type {
-  CityRow, Competition, KeywordMetrics, LocalDemand, NicheSnapshot, OrganicLabel, SerpInfo,
+  CityRow, Competition, KeywordMetrics, LocalDemand, NicheSnapshot, OrganicLabel, OrganicSource, SerpInfo,
 } from "./types";
 
 const US_POPULATION = 331_000_000;
@@ -157,6 +157,8 @@ export function buildCityRow(
   serp: SerpInfo | null,
   local: LocalDemand | null,
   status: CityRow["status"],
+  /** DataForSEO Labs keyword difficulty for "<keyword> <city>" (null = no data). */
+  cityKd: number | null = null,
 ): CityRow {
   const searchVolume = local ? local.searchVolume : estimateCityVolume(snapshot.nationalVolume, city.population);
   const cityCpc = local?.cpc ?? null;
@@ -165,7 +167,10 @@ export function buildCityRow(
   const scale = snapshot.nationalVolume ? searchVolume / snapshot.nationalVolume : 0;
   const trend =
     local && local.trend.length ? local.trend : snapshot.trend.map((v) => Math.round(v * scale));
-  const organicDifficulty = serp ? serp.difficulty : estimateOrganicDifficulty(snapshot.difficulty, city.population);
+  const organicSource: OrganicSource = serp ? "Live SERP" : cityKd != null ? "City KD" : "Estimated";
+  const organicDifficulty = serp
+    ? serp.difficulty
+    : cityKd ?? estimateOrganicDifficulty(snapshot.difficulty, city.population);
   return {
     id: city.id,
     city: city.name,
@@ -184,7 +189,7 @@ export function buildCityRow(
     competitionIndex,
     nicheDifficulty: snapshot.difficulty,
     organicDifficulty,
-    organicEstimated: !serp,
+    organicSource,
     organic: organicLabel(organicDifficulty),
     weakResults: serp?.weakResults ?? null,
     cityRelevant: serp?.cityRelevant ?? null,
@@ -205,13 +210,23 @@ export function buildCityRow(
  * and recomputes everything derived from it. Values missing from the new data keep
  * their previous (national) fallback.
  */
-export function refreshRow(row: CityRow, update: { serp?: SerpInfo | null; local?: LocalDemand | null }): CityRow {
-  const next: CityRow = { ...row };
-  const { serp, local } = update;
+export function refreshRow(
+  row: CityRow,
+  update: { serp?: SerpInfo | null; local?: LocalDemand | null; cityKd?: number | null },
+): CityRow {
+  const next: CityRow = { ...row, organicSource: organicSourceOf(row) ?? undefined };
+  delete next.organicEstimated;
+  const { serp, local, cityKd } = update;
+  // City KD replaces an estimate, never a live SERP result.
+  if (cityKd != null && !serp && next.organicSource !== "Live SERP") {
+    next.organicDifficulty = cityKd;
+    next.organicSource = "City KD";
+    next.organic = organicLabel(cityKd);
+  }
   if (serp) {
     Object.assign(next, {
       organicDifficulty: serp.difficulty,
-      organicEstimated: false,
+      organicSource: "Live SERP",
       organic: organicLabel(serp.difficulty),
       weakResults: serp.weakResults,
       cityRelevant: serp.cityRelevant,
@@ -246,10 +261,17 @@ export function refreshRow(row: CityRow, update: { serp?: SerpInfo | null; local
   return next;
 }
 
+/** Organic source of a row, including rows saved before `organicSource` existed. */
+export function organicSourceOf(row: CityRow): OrganicSource | null {
+  if (row.organicDifficulty == null) return null;
+  if (row.organicSource) return row.organicSource;
+  return row.organicEstimated ? "Estimated" : "Live SERP";
+}
+
 /** How much of a row comes from exact DataForSEO data vs. estimates. */
-export function accuracyLabel(row: CityRow): "Exact" | "SERP checked" | "Estimated" {
-  const serpChecked = row.organicDifficulty != null && !row.organicEstimated;
-  if (row.volumeSource === "Google Ads (city)" && serpChecked) return "Exact";
-  if (serpChecked) return "SERP checked";
+export function accuracyLabel(row: CityRow): "Exact" | "SERP checked" | "KD checked" | "Estimated" {
+  const source = organicSourceOf(row);
+  if (source === "Live SERP") return row.volumeSource === "Google Ads (city)" ? "Exact" : "SERP checked";
+  if (source === "City KD") return "KD checked";
   return "Estimated";
 }

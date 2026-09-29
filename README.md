@@ -71,15 +71,35 @@ usually empty for city-level keywords, so the live SERP is the better signal.
 Tick rows on the Research tab and click **Save to list ▾**. Pick an existing list or type a name to create one.
 A list can mix niches and runs. Saving the same city/niche again refreshes its numbers and keeps your note.
 
+### Organic difficulty per city: pick how much to spend
+
+| Option | Cost | What you get |
+|---|---|---|
+| **City keyword difficulty** (default) | ~$0.0001/city + $0.01/request | DataForSEO Labs difficulty for the real search phrase, e.g. "plumber austin". Most cities get a value; rare phrases return none and keep the estimate |
+| **Queued SERP check** | ~$0.0006/city | Full live top-10 analysis (weak sites, local competitors, map pack), results in ~1–5 min |
+| **Live SERP check** | ~$0.002/city | Same analysis, results in seconds |
+| **Estimate only** | free | Size-based guess: 10 + ½ national KD + up to 35 for city size |
+
+The table marks the source: a plain number is a live SERP result, **KD** means city keyword difficulty, and **est.** means
+estimate. When several are available, a SERP result wins over KD, which wins over the estimate. SERP modes also fetch KD, so
+cities a SERP check can't cover still get a real number. SEMrush isn't used: its API needs a ~$500/mo plan and only has
+national difficulty.
+
+**Nothing is paid for twice.** Every KD, SERP and city-volume result is cached for 30 days (in Supabase when it's set
+up and shared across your account, otherwise in this browser's IndexedDB). Re-runs, reopened reports and Accurate data
+reuse cached results for free, and the app tells you how many were reused. Tick **Refresh** to force new data. Queued SERP
+tasks are remembered too: if you close the tab before they finish, they're collected the next time you open the app.
+
 ### Save credits: scan cheap, check only your shortlist
 
-1. On **Research**, untick **Live SERP check for every city**. The run then costs only the niche snapshot
-   (~$0.10) no matter how many cities you pick. City numbers are estimates based on national data, and
+1. On **Research**, choose **City keyword difficulty** (or **Estimate only**). A 50-city run then costs about $0.12
+   (or $0.10), and even all ~4,300 cities stay around $0.55. City numbers are estimates based on national data, and
    **Organic Diff.** is estimated too (marked `est.`): 10 + ½ × the niche's national keyword difficulty + up to 35
    for city size (bigger metros have more established competitors). A live SERP check replaces it with the real value.
 2. Tick the cities that look promising and **Save to list**.
-3. On **Keyword Lists**, select those rows (or use *All*) and click **Accurate data ▾**. Choose:
-   - **Live SERP check** (~$0.002/row): organic difficulty, weak sites, local competitors, map pack
+3. On **Keyword Lists**, select those rows (or use *All*) and click **Accurate data ▾**. Choose any of:
+   - **City keyword difficulty** (~$0.0001/row)
+   - **SERP check**, queued (~$0.0006/row, 1–5 min) or live (~$0.002/row): organic difficulty, weak sites, local competitors, map pack
    - **Exact city volume & CPC** (~$0.09/row, ~5 s each): Google Ads data targeted to that city
 
    The cost estimate is shown first (runs over $1 ask you to confirm). Results are saved into the list, scores are
@@ -118,7 +138,8 @@ their own lists and reports (enforced by row-level security in the database).
 1. **Create the tables.** Either:
    - with the Supabase GitHub integration, set the Supabase directory to `supabase` and a production branch
      (this repo has no `main` yet). The integration applies `supabase/migrations/*.sql` when that branch changes, or
-   - paste `supabase/migrations/20260929000000_keyword_lists.sql` into the Supabase **SQL Editor** and run it.
+   - paste each file in `supabase/migrations/` (in order: `20260929…_keyword_lists.sql`, then
+     `20260930…_api_cache.sql`) into the Supabase **SQL Editor** and run it.
 2. **Keys:** from Project Settings → API, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    in `.env.local` (and in Vercel's environment variables).
 3. **Auth:** Authentication → Providers → Email is on by default. Under Authentication → URL Configuration,
