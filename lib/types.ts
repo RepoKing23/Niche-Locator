@@ -80,6 +80,8 @@ export type CityRow = {
   competitionIndex: number | null;
   nicheDifficulty: number | null;
   organicDifficulty: number | null;
+  /** True when organicDifficulty is an estimate (no live SERP check yet). */
+  organicEstimated?: boolean;
   organic: OrganicLabel;
   weakResults: number | null;
   cityRelevant: number | null;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CITIES, STATE_CODES, dataForSeoLocationName, findCity, tierFor } from "@/lib/cities";
 import { suggestVariants, coreTerm } from "@/lib/keywords";
 import { mockNiche, mockSerp } from "@/lib/mock";
-import { accuracyLabel, buildCityRow, buildSnapshot, estimateCityVolume, opportunityScore, organicLabel, refreshRow, serpDifficulty } from "@/lib/scoring";
+import { accuracyLabel, buildCityRow, buildSnapshot, estimateCityVolume, estimateOrganicDifficulty, opportunityScore, organicLabel, refreshRow, serpDifficulty } from "@/lib/scoring";
 
 describe("keywords", () => {
   it("derives variants from the niche", () => {
@@ -81,9 +81,19 @@ describe("refreshRow (accurate check on saved rows)", () => {
   const snap = buildSnapshot("stair installer", mockNiche(["stair installer"]).metrics, 0);
   const estimated = buildCityRow(city, snap, "stair installer", null, null, "skipped");
 
-  it("starts as an estimate", () => {
+  it("starts as an estimate, with an estimated organic difficulty", () => {
     expect(accuracyLabel(estimated)).toBe("Estimated");
-    expect(estimated.organicDifficulty).toBeNull();
+    expect(estimated.organicEstimated).toBe(true);
+    expect(estimated.organicDifficulty).toBe(estimateOrganicDifficulty(snap.difficulty, city.population));
+    expect(estimated.organic).not.toBe("Unknown");
+  });
+
+  it("estimates bigger metros as harder than small towns", () => {
+    const small = estimateOrganicDifficulty(10, 15_000);
+    const big = estimateOrganicDifficulty(10, 2_000_000);
+    expect(small).toBeLessThan(big);
+    expect(organicLabel(small)).toBe("Low");
+    expect(estimateOrganicDifficulty(null, 8_000_000)).toBeLessThanOrEqual(100);
   });
 
   it("applies a live SERP check", () => {

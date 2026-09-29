@@ -136,6 +136,16 @@ export function opportunityScore(input: {
   return Math.round(30 * cpcPart + 20 * adsPart + 35 * easePart + 15 * volPart);
 }
 
+/**
+ * Organic difficulty estimate used before a live SERP check (free, from data we already have):
+ * 10 + half the niche's national keyword difficulty + up to 35 for market size
+ * (log scale: 10k people ≈ 0, 8M ≈ 35). Bigger metros have more established local competitors.
+ */
+export function estimateOrganicDifficulty(nicheDifficulty: number | null, population: number): number {
+  const size = clamp01(Math.log10(Math.max(population, 10_000) / 10_000) / Math.log10(800));
+  return Math.round(Math.min(100, 10 + 0.5 * (nicheDifficulty ?? 20) + 35 * size));
+}
+
 export function estimateCityVolume(nationalVolume: number, population: number): number {
   return Math.round((nationalVolume * population * METRO_FACTOR) / US_POPULATION);
 }
@@ -155,7 +165,7 @@ export function buildCityRow(
   const scale = snapshot.nationalVolume ? searchVolume / snapshot.nationalVolume : 0;
   const trend =
     local && local.trend.length ? local.trend : snapshot.trend.map((v) => Math.round(v * scale));
-  const organicDifficulty = serp ? serp.difficulty : null;
+  const organicDifficulty = serp ? serp.difficulty : estimateOrganicDifficulty(snapshot.difficulty, city.population);
   return {
     id: city.id,
     city: city.name,
@@ -174,6 +184,7 @@ export function buildCityRow(
     competitionIndex,
     nicheDifficulty: snapshot.difficulty,
     organicDifficulty,
+    organicEstimated: !serp,
     organic: organicLabel(organicDifficulty),
     weakResults: serp?.weakResults ?? null,
     cityRelevant: serp?.cityRelevant ?? null,
@@ -200,6 +211,7 @@ export function refreshRow(row: CityRow, update: { serp?: SerpInfo | null; local
   if (serp) {
     Object.assign(next, {
       organicDifficulty: serp.difficulty,
+      organicEstimated: false,
       organic: organicLabel(serp.difficulty),
       weakResults: serp.weakResults,
       cityRelevant: serp.cityRelevant,
@@ -236,7 +248,8 @@ export function refreshRow(row: CityRow, update: { serp?: SerpInfo | null; local
 
 /** How much of a row comes from exact DataForSEO data vs. estimates. */
 export function accuracyLabel(row: CityRow): "Exact" | "SERP checked" | "Estimated" {
-  if (row.volumeSource === "Google Ads (city)" && row.organicDifficulty != null) return "Exact";
-  if (row.organicDifficulty != null) return "SERP checked";
+  const serpChecked = row.organicDifficulty != null && !row.organicEstimated;
+  if (row.volumeSource === "Google Ads (city)" && serpChecked) return "Exact";
+  if (serpChecked) return "SERP checked";
   return "Estimated";
 }

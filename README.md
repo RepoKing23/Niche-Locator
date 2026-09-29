@@ -74,7 +74,9 @@ A list can mix niches and runs. Saving the same city/niche again refreshes its n
 ### Save credits: scan cheap, check only your shortlist
 
 1. On **Research**, untick **Live SERP check for every city**. The run then costs only the niche snapshot
-   (~$0.10) no matter how many cities you pick. City numbers are estimates based on national data.
+   (~$0.10) no matter how many cities you pick. City numbers are estimates based on national data, and
+   **Organic Diff.** is estimated too (marked `est.`): 10 + ½ × the niche's national keyword difficulty + up to 35
+   for city size (bigger metros have more established competitors). A live SERP check replaces it with the real value.
 2. Tick the cities that look promising and **Save to list**.
 3. On **Keyword Lists**, select those rows (or use *All*) and click **Accurate data ▾**. Choose:
    - **Live SERP check** (~$0.002/row): organic difficulty, weak sites, local competitors, map pack

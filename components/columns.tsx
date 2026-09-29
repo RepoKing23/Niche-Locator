@@ -67,10 +67,15 @@ const RENDER: Record<string, (r: CityRow) => ReactNode> = {
   organicDifficulty: (r) =>
     r.status === "pending" ? <span className="text-zinc-400">…</span>
       : r.organicDifficulty == null ? <span className="text-zinc-400" title="Not checked yet — run a live SERP check">—</span>
-        : int(r.organicDifficulty),
+        : r.organicEstimated ? (
+          <span title="Estimated from niche difficulty and city size — run a live SERP check for the real value">
+            {int(r.organicDifficulty)}<span className="ml-1 text-xs text-zinc-400">est.</span>
+          </span>
+        ) : int(r.organicDifficulty),
   organic: (r) => (
     <Badge tone={r.organic === "Low" ? "good" : r.organic === "Medium" ? "mid" : r.organic === "High" ? "bad" : "none"}>
       {r.status === "error" ? "Error" : r.organic}
+      {r.status !== "error" && r.organicEstimated && r.organic !== "Unknown" && <span className="ml-1 opacity-60">est.</span>}
     </Badge>
   ),
   weakResults: (r) => int(r.weakResults),
