@@ -91,7 +91,8 @@ export type CityRow = {
   trend: number[];
   yoy: number | null;
   score: number;
-  status: "pending" | "done" | "error";
+  /** "skipped" = the run was an estimate-only scan without a live SERP check. */
+  status: "pending" | "done" | "error" | "skipped";
 };
 
 export type Report = {
@@ -105,6 +106,8 @@ export type Report = {
   errors: Record<string, string>;
   cityIds: string[];
   primaryKeyword: string;
+  /** Estimate-only scan: no live SERP check was run for the cities. */
+  serpSkipped?: boolean;
   spent: number;
 };
 

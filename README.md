@@ -71,6 +71,19 @@ usually empty for city-level keywords, so the live SERP is the better signal.
 Tick rows on the Research tab and click **Save to list ▾**. Pick an existing list or type a name to create one.
 A list can mix niches and runs. Saving the same city/niche again refreshes its numbers and keeps your note.
 
+### Save credits: scan cheap, check only your shortlist
+
+1. On **Research**, untick **Live SERP check for every city**. The run then costs only the niche snapshot
+   (~$0.10) no matter how many cities you pick. City numbers are estimates based on national data.
+2. Tick the cities that look promising and **Save to list**.
+3. On **Keyword Lists**, select those rows (or use *All*) and click **Accurate data ▾**. Choose:
+   - **Live SERP check** (~$0.002/row): organic difficulty, weak sites, local competitors, map pack
+   - **Exact city volume & CPC** (~$0.09/row, ~5 s each): Google Ads data targeted to that city
+
+   The cost estimate is shown first (runs over $1 ask you to confirm). Results are saved into the list, scores are
+   recalculated, and notes are kept. The **Data** column shows each row's accuracy: *Estimated*, *SERP checked* or *Exact*.
+   You can stop a run part-way; rows already checked stay saved.
+
 The **Keyword Lists** tab shows your lists with row counts (create, rename ✎, delete ✕). For the open list you can:
 - filter, sort and search (including by niche and note), and edit the **Note** column inline
 - **Move to** / **Copy to** another list, or **Remove** rows

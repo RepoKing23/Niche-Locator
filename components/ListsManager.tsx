@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import AccurateRun from "./AccurateRun";
 import DataTable, { type ActionContext } from "./DataTable";
 import SaveToList from "./SaveToList";
 import type { Column } from "./columns";
+import { accuracyLabel } from "@/lib/scoring";
 import { getStore } from "@/lib/store";
 import type { CityRow, KeywordList, ListItem } from "@/lib/types";
 
 /** Keyword manager: named lists of saved rows, with notes, move/copy, and exports. */
-export default function ListsManager() {
+export default function ListsManager({ mode }: { mode: "live" | "demo" }) {
   const [lists, setLists] = useState<KeywordList[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [items, setItems] = useState<ListItem[]>([]);
@@ -106,6 +108,18 @@ export default function ListsManager() {
       render: (r) => <NoteCell key={r.id} value={byId.get(r.id)?.note ?? ""} onSave={(v) => saveNote(r.id, v)} />,
     },
     {
+      key: "accuracy", label: "Data", defaultVisible: true,
+      help: "Exact = live SERP + Google Ads city volume; SERP checked = live SERP only; Estimated = from national data. Use “Accurate data” to upgrade rows.",
+      value: (r) => accuracyLabel(r),
+      render: (r) => {
+        const a = accuracyLabel(r);
+        const cls = a === "Exact" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200"
+          : a === "SERP checked" ? "bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-200"
+            : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400";
+        return <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${cls}`}>{a}</span>;
+      },
+    },
+    {
       key: "saved", label: "Saved", defaultVisible: false, help: "Date saved to the list",
       value: (r) => byId.get(r.id)?.createdAt.slice(0, 10) ?? null,
     },
@@ -194,6 +208,12 @@ export default function ListsManager() {
               searchText={searchText}
               actions={(ctx) => (
                 <>
+                  <AccurateRun mode={mode} flash={ctx.flash}
+                    items={ctx.target.map((r) => byId.get(r.id)!).filter(Boolean)}
+                    onUpdated={(updated) => {
+                      const map = new Map(updated.map((u) => [u.id, u]));
+                      setItems((cur) => cur.map((i) => map.get(i.id) ?? i));
+                    }} />
                   <button className="btn-primary" disabled={!ctx.target.length} onClick={() => exportList(ctx)}
                     title="Excel workbook: Summary, Rows (with niche & notes), SERP Details">
                     Full report (Excel)

@@ -5,16 +5,13 @@ import CityPicker from "./CityPicker";
 import DataTable, { type ActionContext } from "./DataTable";
 import SaveToList from "./SaveToList";
 import SnapshotPanel from "./SnapshotPanel";
+import { LOCAL_INTERVAL_MS, PRICES, SERP_BATCH, SERP_PARALLEL, postJson, sleep } from "@/lib/api";
 import { CITIES, findCity } from "@/lib/cities";
 import { chunk, cleanKeyword, suggestVariants } from "@/lib/keywords";
 import { buildCityRow } from "@/lib/scoring";
 import { getStore } from "@/lib/store";
 import type { CityRow, LocalDemand, NicheSnapshot, Report, SavedReportMeta, SerpInfo } from "@/lib/types";
 
-const PRICES = { niche: 0.1, serp: 0.002, local: 0.09 };
-const LOCAL_INTERVAL_MS = 5200; // Google Ads: 12 requests/minute
-const SERP_BATCH = 20;
-const SERP_PARALLEL = 5;
 const CITY_SELECTION_KEY = "niche-locator:selected-cities";
 const DEFAULT_CITY_IDS = CITIES.slice(0, 50).map((c) => c.id);
 
@@ -50,21 +47,6 @@ function parseSelection(raw: string): Set<string> {
   }
 }
 
-async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  // Full reload so the proxy re-checks the (expired) session.
-  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-  if (res.status === 401) window.location.assign("/login");
-  const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-  if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
-  return json as T;
-}
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
   const [niche, setNiche] = useState("");
@@ -72,6 +54,7 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
   const [variantsEdited, setVariantsEdited] = useState(false);
   const [primaryIdx, setPrimaryIdx] = useState(0);
   const [exactLocal, setExactLocal] = useState(false);
+  const [liveSerp, setLiveSerp] = useState(true);
   const [showPicker, setShowPicker] = useState(true);
 
   const selectionRaw = useSyncExternalStore(subscribeSelection, readSelectionRaw, () => "");
@@ -118,7 +101,7 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
     }
   };
 
-  const estCost = PRICES.niche + cityIds.length * PRICES.serp + (exactLocal ? cityIds.length * PRICES.local : 0);
+  const estCost = PRICES.niche + (liveSerp ? cityIds.length * PRICES.serp : 0) + (exactLocal ? cityIds.length * PRICES.local : 0);
   const estMinutes = exactLocal
     ? Math.ceil((cityIds.length * LOCAL_INTERVAL_MS) / 60000)
     : Math.max(1, Math.ceil(cityIds.length / (SERP_BATCH * SERP_PARALLEL) / 4));
@@ -217,9 +200,10 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
       errors: {},
       cityIds,
       primaryKeyword,
+      serpSkipped: !liveSerp,
       spent: snapshot.cost,
     }));
-    await runSerps(primaryKeyword, cityIds);
+    if (liveSerp) await runSerps(primaryKeyword, cityIds);
     if (exactLocal) await runLocals(variants, cityIds, apiMode === "live");
     finish();
   };
@@ -242,7 +226,7 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
     return report.cityIds.flatMap((id) => {
       const city = findCity(id);
       if (!city) return [];
-      const status = report.serps[id] ? "done" : report.errors[id] ? "error" : "pending";
+      const status = report.serps[id] ? "done" : report.errors[id] ? "error" : report.serpSkipped ? "skipped" : "pending";
       return [buildCityRow(city, report.snapshot, report.primaryKeyword, report.serps[id] ?? null, report.locals[id] ?? null, status)];
     });
   }, [report]);
@@ -307,6 +291,16 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
               onChange={(e) => { setVariantsText(e.target.value); setVariantsEdited(true); }} />
           </label>
           <div className="flex flex-col justify-between gap-3">
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-1" checked={liveSerp} onChange={(e) => setLiveSerp(e.target.checked)} />
+              <span>
+                Live SERP check for every city
+                <span className="block text-xs text-zinc-500">
+                  ~$0.002 per city. Off = cheap estimate-only scan (~$0.10 total): save the cities you like to a list and run
+                  <b> Accurate data</b> on just those.
+                </span>
+              </span>
+            </label>
             <label className="flex items-start gap-2 text-sm">
               <input type="checkbox" className="mt-1" checked={exactLocal} onChange={(e) => setExactLocal(e.target.checked)} />
               <span>

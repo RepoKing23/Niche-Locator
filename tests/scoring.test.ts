@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CITIES, STATE_CODES, dataForSeoLocationName, findCity, tierFor } from "@/lib/cities";
 import { suggestVariants, coreTerm } from "@/lib/keywords";
 import { mockNiche, mockSerp } from "@/lib/mock";
-import { buildCityRow, buildSnapshot, estimateCityVolume, opportunityScore, organicLabel, serpDifficulty } from "@/lib/scoring";
+import { accuracyLabel, buildCityRow, buildSnapshot, estimateCityVolume, opportunityScore, organicLabel, refreshRow, serpDifficulty } from "@/lib/scoring";
 
 describe("keywords", () => {
   it("derives variants from the niche", () => {
@@ -73,5 +73,39 @@ describe("scoring", () => {
     expect(row.cpcSource).toBe("National");
     expect(row.organicDifficulty).toBe(serp.difficulty);
     expect(row.adValue).toBeCloseTo(row.searchVolume * row.cpc, 1);
+  });
+});
+
+describe("refreshRow (accurate check on saved rows)", () => {
+  const city = findCity("austin-tx")!;
+  const snap = buildSnapshot("stair installer", mockNiche(["stair installer"]).metrics, 0);
+  const estimated = buildCityRow(city, snap, "stair installer", null, null, "skipped");
+
+  it("starts as an estimate", () => {
+    expect(accuracyLabel(estimated)).toBe("Estimated");
+    expect(estimated.organicDifficulty).toBeNull();
+  });
+
+  it("applies a live SERP check", () => {
+    const { serp } = mockSerp("stair installer", "Austin,Texas,United States", city);
+    const r = refreshRow(estimated, { serp });
+    expect(r.organicDifficulty).toBe(serp.difficulty);
+    expect(r.weakResults).toBe(serp.weakResults);
+    expect(r.status).toBe("done");
+    expect(accuracyLabel(r)).toBe("SERP checked");
+    expect(r.score).toBe(opportunityScore({ cpc: r.cpc, competitionIndex: r.competitionIndex, organicDifficulty: serp.difficulty, searchVolume: r.searchVolume }));
+  });
+
+  it("applies exact city demand, keeping national CPC when the city has none", () => {
+    const { serp } = mockSerp("stair installer", "Austin,Texas,United States", city);
+    const withSerp = refreshRow(estimated, { serp });
+    const r = refreshRow(withSerp, {
+      local: { searchVolume: 70, cpc: null, lowBid: 4, highBid: 20, competitionIndex: 90, trend: Array(12).fill(70), cost: 0 },
+    });
+    expect(r).toMatchObject({ searchVolume: 70, volumeSource: "Google Ads (city)", cpc: withSerp.cpc, cpcSource: withSerp.cpcSource, competition: "HIGH" });
+    expect(r.adValue).toBeCloseTo(70 * withSerp.cpc, 2);
+    expect(accuracyLabel(r)).toBe("Exact");
+    const priced = refreshRow(withSerp, { local: { searchVolume: 70, cpc: 18.5, lowBid: null, highBid: null, competitionIndex: null, trend: [], cost: 0 } });
+    expect(priced).toMatchObject({ cpc: 18.5, cpcSource: "City", lowBid: withSerp.lowBid });
   });
 });

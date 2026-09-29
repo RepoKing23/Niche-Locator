@@ -188,3 +188,55 @@ export function buildCityRow(
     status,
   };
 }
+
+/**
+ * Updates a saved row with fresh DataForSEO data (live SERP and/or exact city demand)
+ * and recomputes everything derived from it. Values missing from the new data keep
+ * their previous (national) fallback.
+ */
+export function refreshRow(row: CityRow, update: { serp?: SerpInfo | null; local?: LocalDemand | null }): CityRow {
+  const next: CityRow = { ...row };
+  const { serp, local } = update;
+  if (serp) {
+    Object.assign(next, {
+      organicDifficulty: serp.difficulty,
+      organic: organicLabel(serp.difficulty),
+      weakResults: serp.weakResults,
+      cityRelevant: serp.cityRelevant,
+      localPack: serp.localPack,
+      localPackTopReviews: serp.localPackTopReviews,
+      adsCount: serp.adsCount,
+      topDomains: serp.topDomains,
+      status: "done",
+    } satisfies Partial<CityRow>);
+  }
+  if (local) {
+    next.searchVolume = local.searchVolume;
+    next.volumeSource = "Google Ads (city)";
+    if (local.cpc != null) {
+      next.cpc = round2(local.cpc);
+      next.cpcSource = "City";
+    }
+    next.lowBid = local.lowBid ?? row.lowBid;
+    next.highBid = local.highBid ?? row.highBid;
+    next.competitionIndex = local.competitionIndex ?? row.competitionIndex;
+    next.competition = competitionFromIndex(next.competitionIndex);
+    if (local.trend.length) next.trend = local.trend;
+    next.yoy = yoy(next.trend);
+  }
+  next.adValue = round2(next.searchVolume * next.cpc);
+  next.score = opportunityScore({
+    cpc: next.cpc,
+    competitionIndex: next.competitionIndex,
+    organicDifficulty: next.organicDifficulty,
+    searchVolume: next.searchVolume,
+  });
+  return next;
+}
+
+/** How much of a row comes from exact DataForSEO data vs. estimates. */
+export function accuracyLabel(row: CityRow): "Exact" | "SERP checked" | "Estimated" {
+  if (row.volumeSource === "Google Ads (city)" && row.organicDifficulty != null) return "Exact";
+  if (row.organicDifficulty != null) return "SERP checked";
+  return "Estimated";
+}
