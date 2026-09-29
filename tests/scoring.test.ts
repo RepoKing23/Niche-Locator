@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CITIES, findCity } from "@/lib/cities";
+import { CITIES, STATE_CODES, dataForSeoLocationName, findCity, tierFor } from "@/lib/cities";
 import { suggestVariants, coreTerm } from "@/lib/keywords";
 import { mockNiche, mockSerp } from "@/lib/mock";
 import { buildCityRow, buildSnapshot, estimateCityVolume, opportunityScore, organicLabel, serpDifficulty } from "@/lib/scoring";
@@ -14,10 +14,32 @@ describe("keywords", () => {
 });
 
 describe("cities", () => {
-  it("has unique ids and ~200 cities sorted by population", () => {
-    expect(CITIES.length).toBeGreaterThanOrEqual(200);
+  it("has unique ids and thousands of cities sorted by population", () => {
+    expect(CITIES.length).toBeGreaterThanOrEqual(3500);
     expect(new Set(CITIES.map((c) => c.id)).size).toBe(CITIES.length);
     expect(CITIES[0].name).toBe("New York");
+    for (let i = 1; i < CITIES.length; i++) expect(CITIES[i - 1].population).toBeGreaterThanOrEqual(CITIES[i].population);
+  });
+
+  it("covers every state with at least 10 local markets (DC is one market)", () => {
+    const counts = new Map<string, number>();
+    CITIES.forEach((c) => counts.set(c.stateCode, (counts.get(c.stateCode) ?? 0) + 1));
+    expect(STATE_CODES).toHaveLength(51);
+    for (const s of STATE_CODES) {
+      if (s === "DC") expect(counts.get(s)).toBe(1);
+      else expect(counts.get(s)).toBeGreaterThanOrEqual(10);
+    }
+  });
+
+  it("resolves well-known cities with Google-style names and market tiers", () => {
+    expect(findCity("austin-tx")).toMatchObject({ state: "Texas", tier: "Major" });
+    expect(findCity("st-louis-mo")).toBeDefined();
+    expect(findCity("washington-dc")).toMatchObject({ name: "Washington" });
+    expect(findCity("new-york-ny")).toBeDefined();
+    expect(dataForSeoLocationName(findCity("austin-tx")!)).toBe("Austin,Texas,United States");
+    expect(CITIES.every((c) => !/[(),]/.test(c.name))).toBe(true);
+    expect(tierFor(60_000)).toBe("Mid");
+    expect(tierFor(12_000)).toBe("Small");
   });
 });
 

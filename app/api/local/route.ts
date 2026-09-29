@@ -5,6 +5,7 @@ import { cleanKeyword } from "@/lib/keywords";
 import { mockLocal } from "@/lib/mock";
 import { combineMetrics } from "@/lib/scoring";
 import type { LocalDemand } from "@/lib/types";
+import { requireUser } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
 
@@ -18,6 +19,8 @@ const Body = z.object({
  * 12 requests/minute, so the browser paces these calls).
  */
 export async function POST(request: Request) {
+  const denied = await requireUser();
+  if (denied) return denied;
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Invalid request" }, { status: 400 });
   const city = findCity(parsed.data.cityId);

@@ -67,6 +67,8 @@ export type CityRow = {
   state: string;
   stateCode: string;
   population: number;
+  /** Market size: Major 250k+, Mid 50k-250k, Small under 50k. */
+  tier: "Major" | "Mid" | "Small";
   keyword: string;
   searchVolume: number;
   volumeSource: "Google Ads (city)" | "Estimated";
@@ -104,4 +106,37 @@ export type Report = {
   cityIds: string[];
   primaryKeyword: string;
   spent: number;
+};
+
+/** A named list of saved report rows (the keyword manager). */
+export type KeywordList = {
+  id: string;
+  name: string;
+  description: string;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** One saved row: a city result for a niche, frozen at save time. */
+export type ListItem = {
+  id: string;
+  listId: string;
+  niche: string;
+  cityId: string;
+  keyword: string;
+  row: CityRow;
+  serp: SerpInfo | null;
+  note: string;
+  createdAt: string;
+};
+
+export type NewListItem = Pick<ListItem, "niche" | "cityId" | "keyword" | "row" | "serp">;
+
+export type SavedReportMeta = {
+  id: string;
+  niche: string;
+  mode: "live" | "demo";
+  cityCount: number;
+  createdAt: string;
 };

@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
+import { downloadBlob, type Cell } from "./export";
 import { COLUMN_DEFS, googleUrl, type ColumnDef } from "./reportColumns";
-import type { CityRow, NicheSnapshot, SerpInfo } from "./types";
+import type { CityRow, ListItem, NicheSnapshot, SerpInfo } from "./types";
 
 export type ReportExportInput = {
   niche: string;
@@ -178,7 +179,7 @@ function addVariants(wb: ExcelJS.Workbook, snapshot: NicheSnapshot) {
   autoWidth(ws);
 }
 
-function addSerpDetails(wb: ExcelJS.Workbook, rows: CityRow[], serps: Record<string, SerpInfo>) {
+function addSerpDetails(wb: ExcelJS.Workbook, pairs: { row: CityRow; serp: SerpInfo | null | undefined }[]) {
   const ws = wb.addWorksheet("SERP Details");
   const header = ws.addRow([
     "City", "State", "Keyword", "Organic Results", "Weak in Top 10", "Weak Domains", "Local Competitors",
@@ -186,8 +187,7 @@ function addSerpDetails(wb: ExcelJS.Workbook, rows: CityRow[], serps: Record<str
     ...Array.from({ length: 10 }, (_, i) => `Top ${i + 1}`),
   ]);
   styleHeader(header);
-  for (const r of rows) {
-    const s = serps[r.id];
+  for (const { row: r, serp: s } of pairs) {
     if (!s) continue;
     ws.addRow([
       r.city, r.stateCode, s.keyword, s.organicCount, s.weakResults, s.weakDomains.join(", "), s.cityRelevant,
@@ -214,11 +214,96 @@ export function buildReportWorkbook(input: ReportExportInput): ExcelJS.Workbook 
   }
   addCityTable(wb.addWorksheet("All Cities"), bestFirst, COLUMN_DEFS);
   addVariants(wb, input.snapshot);
-  addSerpDetails(wb, bestFirst, input.serps);
+  addSerpDetails(wb, bestFirst.map((row) => ({ row, serp: input.serps[row.id] })));
   return wb;
 }
 
 export function reportFilename(niche: string, createdAt: string): string {
   const slug = niche.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "niche";
   return `${slug}-niche-report-${createdAt.slice(0, 10)}.xlsx`;
+}
+
+/** Extra columns for saved list rows, which can mix niches. */
+const LIST_COLUMNS: ColumnDef[] = [
+  { key: "niche", label: "Niche", defaultVisible: true, help: "Niche researched", value: () => null },
+  { key: "note", label: "Note", defaultVisible: true, help: "Your note", value: () => null },
+  { key: "saved", label: "Saved", defaultVisible: true, help: "Date saved to the list", value: () => null },
+];
+
+/** Workbook for a keyword list: Summary, Rows (all columns + niche/note/date) and SERP Details. */
+export function buildListWorkbook(listName: string, items: ListItem[], scope: "all" | "selected"): ExcelJS.Workbook {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Niche Locator";
+  const sorted = [...items].sort((a, b) => b.row.score - a.row.score);
+
+  const ws = wb.addWorksheet("Summary", { properties: { tabColor: { argb: COLORS.title } } });
+  ws.getColumn(1).width = 28;
+  ws.getColumn(2).width = 22;
+  for (let i = 3; i <= 7; i++) ws.getColumn(i).width = 16;
+  ws.addRow([`Keyword list: ${listName}`]).font = { bold: true, size: 18, color: { argb: COLORS.title } };
+  ws.addRow([`Exported ${new Date().toLocaleString("en-US")} · ${scope === "all" ? "all rows" : "selected rows only"}`])
+    .font = { color: { argb: COLORS.muted } };
+  ws.addRow([]);
+  const kv = (k: string, v: string | number) => {
+    const r = ws.addRow([k, v]);
+    r.getCell(1).font = { bold: true };
+    r.getCell(2).alignment = { horizontal: "left" };
+  };
+  kv("Rows", items.length);
+  const niches = [...new Set(items.map((i) => i.niche))];
+  kv("Niches", niches.join(", "));
+  kv("States", [...new Set(items.map((i) => i.row.stateCode))].sort().join(", "));
+  ws.addRow([]);
+  ws.addRow(["Top 10 by opportunity score"]).font = { bold: true, size: 13, color: { argb: COLORS.title } };
+  styleHeader(ws.addRow(["City", "State", "Niche", "Score", "CPC", "Monthly searches", "Organic comp."]));
+  for (const i of sorted.slice(0, 10)) {
+    const r = ws.addRow([i.row.city, i.row.stateCode, i.niche, i.row.score, i.row.cpc, i.row.searchVolume, i.row.organic]);
+    r.getCell(4).fill = fill(toneFor("score", i.row)!);
+    r.getCell(5).numFmt = "$#,##0.00";
+    r.getCell(6).numFmt = "#,##0";
+  }
+
+  const rowsWs = wb.addWorksheet("Rows");
+  const extra = new Map(sorted.map((i) => [i.row, i]));
+  const columns: ColumnDef[] = [
+    ...LIST_COLUMNS.map((c) => ({
+      ...c,
+      value: (r: CityRow) => {
+        const i = extra.get(r)!;
+        return c.key === "niche" ? i.niche : c.key === "note" ? i.note : i.createdAt.slice(0, 10);
+      },
+    })),
+    ...COLUMN_DEFS,
+  ];
+  addCityTable(rowsWs, sorted.map((i) => i.row), columns);
+  rowsWs.views = [{ state: "frozen", xSplit: 5, ySplit: 1 }];
+
+  addSerpDetails(wb, sorted.map((i) => ({ row: i.row, serp: i.serp })));
+  return wb;
+}
+
+export function listFilename(listName: string): string {
+  const slug = listName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "list";
+  return `${slug}-keyword-list-${new Date().toISOString().slice(0, 10)}.xlsx`;
+}
+
+/** Single-sheet workbook of exactly the columns/rows shown in a table. */
+export function buildTableWorkbook(sheetName: string, headers: string[], rows: Cell[][]): ExcelJS.Workbook {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(sheetName.replace(/[\\/?*[\]:]/g, " ").slice(0, 31) || "Report", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+  styleHeader(ws.addRow(headers));
+  for (const r of rows) ws.addRow(r.map((v) => (v == null ? "" : v)));
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
+  autoWidth(ws);
+  return wb;
+}
+
+const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/** Browser only: write the workbook and trigger a download. */
+export async function downloadWorkbook(wb: ExcelJS.Workbook, filename: string) {
+  const buffer = await wb.xlsx.writeBuffer();
+  downloadBlob(new Blob([buffer], { type: XLSX_TYPE }), filename);
 }

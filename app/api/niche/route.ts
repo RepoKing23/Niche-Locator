@@ -3,6 +3,7 @@ import { DataForSeoError, fetchNiche, hasCredentials } from "@/lib/dataforseo";
 import { cleanKeyword } from "@/lib/keywords";
 import { mockNiche } from "@/lib/mock";
 import { buildSnapshot } from "@/lib/scoring";
+import { requireUser } from "@/lib/supabase/server";
 
 const Body = z.object({
   niche: z.string().trim().min(2).max(80),
@@ -11,6 +12,8 @@ const Body = z.object({
 
 /** National snapshot of the niche: CPC, bids, ads competition, volume and keyword difficulty. */
 export async function POST(request: Request) {
+  const denied = await requireUser();
+  if (denied) return denied;
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Enter a niche and at least one keyword variant." }, { status: 400 });
   const variants = [...new Set(parsed.data.variants.map(cleanKeyword).filter((v) => v.length >= 2))];

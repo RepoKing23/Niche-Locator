@@ -162,6 +162,7 @@ export function buildCityRow(
     state: city.state,
     stateCode: city.stateCode,
     population: city.population,
+    tier: city.tier,
     keyword,
     searchVolume,
     volumeSource: local ? "Google Ads (city)" : "Estimated",

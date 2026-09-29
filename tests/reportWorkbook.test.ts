@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { CITIES, dataForSeoLocationName } from "@/lib/cities";
 import { mockNiche, mockSerp } from "@/lib/mock";
 import { COLUMN_DEFS } from "@/lib/reportColumns";
-import { buildReportWorkbook, reportFilename, type ReportExportInput } from "@/lib/reportWorkbook";
+import { buildListWorkbook, buildReportWorkbook, buildTableWorkbook, reportFilename, type ReportExportInput } from "@/lib/reportWorkbook";
 import { buildCityRow, buildSnapshot } from "@/lib/scoring";
-import type { SerpInfo } from "@/lib/types";
+import type { ListItem, SerpInfo } from "@/lib/types";
 
 function makeInput(overrides: Partial<ReportExportInput> = {}): ReportExportInput {
   const keyword = "stair installer";
@@ -77,5 +77,32 @@ describe("buildReportWorkbook", () => {
 
   it("names the file after the niche and date", () => {
     expect(reportFilename("Stairway Installer", "2026-09-28T12:00:00Z")).toBe("stairway-installer-niche-report-2026-09-28.xlsx");
+  });
+});
+
+describe("buildListWorkbook", () => {
+  it("exports saved rows with niche and notes, across niches", async () => {
+    const input = makeInput();
+    const items: ListItem[] = input.rows.slice(0, 4).map((row, i) => ({
+      id: `item-${i}`, listId: "l1", niche: i % 2 ? "plumber" : "stair installer", cityId: row.id, keyword: row.keyword,
+      row, serp: input.serps[row.id], note: i === 0 ? "call first" : "", createdAt: "2026-09-29T10:00:00.000Z",
+    }));
+    const buf = await buildListWorkbook("Stairs TX", items, "selected").xlsx.writeBuffer();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as ArrayBuffer);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(["Summary", "Rows", "SERP Details"]);
+    const rows = wb.getWorksheet("Rows")!;
+    expect(rows.getRow(1).getCell(1).value).toBe("Niche");
+    expect(rows.getRow(1).getCell(2).value).toBe("Note");
+    expect(rows.rowCount).toBe(5);
+    const notes: unknown[] = [];
+    rows.eachRow((r, n) => n > 1 && notes.push(r.getCell(2).value));
+    expect(notes).toContain("call first");
+    expect(wb.getWorksheet("Summary")!.getRow(1).getCell(1).value).toBe("Keyword list: Stairs TX");
+  });
+
+  it("builds a single-sheet table workbook", () => {
+    const wb = buildTableWorkbook("My table", ["A", "B"], [[1, "x"], [2, null]]);
+    expect(wb.worksheets[0].rowCount).toBe(3);
   });
 });

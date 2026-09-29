@@ -31,6 +31,8 @@ export const COLUMN_DEFS: ColumnDef[] = [
   { key: "stateCode", label: "State", defaultVisible: true, help: "State", value: (r) => r.stateCode },
   { key: "population", label: "Population", numeric: true, defaultVisible: true, numFmt: INT,
     help: "City population (2020 Census)", value: (r) => r.population },
+  { key: "tier", label: "Market Size", defaultVisible: true,
+    help: "Major = 250k+ people, Mid = 50k-250k, Small = under 50k", value: (r) => r.tier ?? null },
   { key: "keyword", label: "Keyword", defaultVisible: true, help: "Keyword used for the live SERP check", value: (r) => r.keyword },
   { key: "searchVolume", label: "Monthly Searches", numeric: true, defaultVisible: true, numFmt: INT,
     help: "Monthly Google searches in the city. 'est.' = national volume scaled by population; fetch exact city volume for Google Ads data.",

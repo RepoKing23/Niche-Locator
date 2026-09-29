@@ -5,6 +5,21 @@ Type a local-service niche (e.g. **stairway installer**) and get a report of US 
 you want for local SEO, lead-gen and rank-and-rent sites.
 
 The report is a sortable, filterable table you can copy into Google Sheets or export to CSV / Excel.
+Save the rows you like into named **keyword lists** and export them later.
+
+## Choosing cities
+
+The app covers about **4,300 US local-service markets**: every place with 10,000+ people, plus each state's
+10 largest places so small states are covered too. Neighborhoods and abandoned or historical places are
+excluded, and DC counts as one market. Under **Cities to research** you pick exactly which ones to run
+before any credits are spent:
+
+- Filter by state, market size (**Major** 250k+, **Mid** 50k–250k, **Small** under 50k), minimum population or name
+- **Top N per state**, **Select all shown**, per-state checkboxes, or tick individual cities
+- The selection and the cost estimate update live, and your last selection is remembered
+
+Cost: about $0.002 per city for the live SERP check. A full national run (~4,300 cities) is about $9.
+The app asks you to confirm any run over $5.
 
 ## How it works
 
@@ -16,12 +31,12 @@ The report is a sortable, filterable table you can copy into Google Sheets or ex
 
 A 50-city run is about **$0.20**. Adding exact city demand adds about $4.50 and roughly 4–5 minutes.
 Without step 3, city volume is **estimated** from national volume × population (marked `est.`) and CPC
-uses the national value (marked `US`). Select rows and click **Get exact city volume** to fetch real
+uses the national value (marked `US`). Select rows and click **Exact city volume** to fetch real
 numbers only for the cities you're interested in.
 
 ### Report columns
 
-Opportunity score · City · State · Population · Keyword · Monthly Searches · CPC · Bid Low / High ·
+Opportunity score · City · State · Population · Market Size · Keyword · Monthly Searches · CPC · Bid Low / High ·
 Ads Competition · Ads Index · Organic Difficulty · Organic Competition · Weak in Top 10 · Local Competitors ·
 Map Pack · Map Pack Max Reviews · Ad Value / mo · 12-mo Trend · Google link. Hidden columns you can switch on
 under **Columns**: Ads on SERP, YoY %, Niche KD (US), Volume/CPC source, Top 10 domains.
@@ -38,8 +53,9 @@ usually empty for city-level keywords, so the live SERP is the better signal.
 
 - **High Ads / Low Organic** preset: CPC ≥ $5, Ads Index ≥ 50, Organic Difficulty ≤ 30 (adjust the fields as needed)
 - Search, state, min population / searches / CPC / ads index / score, max organic difficulty, organic competition level
-- Click a header to sort; tick rows to copy or export only those rows
-- **Download full report (Excel)** creates one workbook with:
+- Click a header to sort. Large results are paginated (100 rows per page); the header checkbox selects every filtered row across all pages
+- **Apply to: Selected (N) / All (M)** decides which rows every button uses: copy, exports, save to list, re-check
+- **Full report (Excel)** creates one workbook with:
   - **Summary**: niche snapshot (US volume, CPC, bids, ads competition, KD), coverage counts, top 10 opportunities, the filters you used, and how to read the numbers
   - **Shortlist**: the cities left after your filters or row selection (only included when you filtered or selected rows)
   - **All Cities**: every city and every column, sorted by score, with color-coded score/competition, $ formats, frozen header, autofilter, column tooltips and clickable Google links
@@ -47,7 +63,19 @@ usually empty for city-level keywords, so the live SERP is the better signal.
   - **SERP Details**: per city, the weak domains, local competitors, map pack, ads and the top 10 domains
 - **Copy** puts tab-separated rows on the clipboard, so they paste into Sheets/Excel as columns. **Export CSV** and **Export table (Excel)** download only the table.
 - Table exports include only the visible columns and follow your current filters and sort
-- Each finished report is saved in your browser; reopen it from **Saved reports** without paying again
+- Each finished report is saved (to Supabase when it's set up, otherwise in this browser); reopen it from **Saved reports** without paying again
+- Excel files are built in your browser, so big reports have no upload size limit
+
+## Keyword lists
+
+Tick rows on the Research tab and click **Save to list ▾**. Pick an existing list or type a name to create one.
+A list can mix niches and runs. Saving the same city/niche again refreshes its numbers and keeps your note.
+
+The **Keyword Lists** tab shows your lists with row counts (create, rename ✎, delete ✕). For the open list you can:
+- filter, sort and search (including by niche and note), and edit the **Note** column inline
+- **Move to** / **Copy to** another list, or **Remove** rows
+- export **all rows or only the selected rows** (Apply to: Selected / All) as Copy, CSV, Excel table, or
+  **Full report (Excel)** (Summary, Rows with niche + notes, SERP Details)
 
 ## Setup
 
@@ -66,14 +94,36 @@ Without credentials the app runs in **demo mode** with made-up data, so you can 
 To deploy, push the repo to Vercel and set `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` as environment
 variables. The credentials only live on the server; the browser never sees them.
 
+### Supabase (login + cloud storage)
+
+Without Supabase the app has no login, and lists and reports are stored in your browser only. With Supabase,
+every page and API route requires sign-in, so nobody else can spend your DataForSEO credits. Each user sees only
+their own lists and reports (enforced by row-level security in the database).
+
+1. **Create the tables.** Either:
+   - with the Supabase GitHub integration, set the Supabase directory to `supabase` and a production branch
+     (this repo has no `main` yet). The integration applies `supabase/migrations/*.sql` when that branch changes, or
+   - paste `supabase/migrations/20260929000000_keyword_lists.sql` into the Supabase **SQL Editor** and run it.
+2. **Keys:** from Project Settings → API, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   in `.env.local` (and in Vercel's environment variables).
+3. **Auth:** Authentication → Providers → Email is on by default. Under Authentication → URL Configuration,
+   set the Site URL to your app's URL and add `https://<your-app>/auth/callback` (and
+   `http://localhost:3000/auth/callback`) to Redirect URLs, for magic links and email confirmation.
+4. Restart the app. You'll be sent to `/login`: create an account, confirm your email, and sign in.
+   To keep it private, turn off new signups after creating your account (Authentication → Providers → Email →
+   *Allow new users to sign up*).
+
 ## Development
 
 ```bash
-npm test          # unit tests (parsers tested against real DataForSEO responses in tests/fixtures)
+npm test          # unit tests (parsers vs. real DataForSEO responses, city data, stores, workbooks,
+                  # and the Supabase migration + row-level security run in PGlite)
 npm run lint
 npm run build
 ```
 
-Code map: `lib/dataforseo.ts` (API client + parsers), `lib/scoring.ts` (difficulty, score, city rows), `lib/reportWorkbook.ts` (full Excel report), `lib/reportColumns.ts` (column definitions),
-`lib/cities.ts` (216 largest US cities), `lib/mock.ts` (demo data), `app/api/*` (server routes),
-`components/*` (UI).
+Code map: `lib/dataforseo.ts` (API client + parsers), `lib/scoring.ts` (difficulty, score, city rows),
+`lib/reportWorkbook.ts` (Excel reports), `lib/reportColumns.ts` (column definitions), `lib/cities.ts` +
+`lib/data/us-cities.json` (city markets; regenerate with `node scripts/build-cities.mjs`), `lib/store/*`
+(Supabase and browser storage for lists/reports), `lib/supabase/*` + `proxy.ts` (auth), `lib/mock.ts` (demo data),
+`app/api/*` (DataForSEO routes), `components/*` (UI), `supabase/migrations/*` (database schema).
