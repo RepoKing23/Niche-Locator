@@ -10,7 +10,8 @@ import { getStore } from "@/lib/store";
 import type { CityRow, KeywordList, ListItem } from "@/lib/types";
 
 /** Keyword manager: named lists of saved rows, with notes, move/copy, and exports. */
-export default function ListsManager({ mode }: { mode: "live" | "demo" }) {
+/** `active` = this tab is visible; data is refreshed each time it becomes visible. */
+export default function ListsManager({ mode, active: visible = true }: { mode: "live" | "demo"; active?: boolean }) {
   const [lists, setLists] = useState<KeywordList[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [items, setItems] = useState<ListItem[]>([]);
@@ -44,13 +45,14 @@ export default function ListsManager({ mode }: { mode: "live" | "demo" }) {
     }
   }, [store]);
 
+  // Refresh when the tab is shown (rows may have been saved from Research meanwhile).
   useEffect(() => {
-    void (async () => loadLists())();
-  }, [loadLists]);
+    if (visible) void (async () => loadLists())();
+  }, [visible, loadLists]);
 
   useEffect(() => {
-    void (async () => loadItems(activeId))();
-  }, [activeId, loadItems]);
+    if (visible) void (async () => loadItems(activeId))();
+  }, [visible, activeId, loadItems]);
 
   const active = lists?.find((l) => l.id === activeId) ?? null;
 
