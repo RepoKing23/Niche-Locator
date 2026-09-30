@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CITIES, STATE_CODES, dataForSeoLocationName, findCity, tierFor } from "@/lib/cities";
 import { suggestVariants, coreTerm } from "@/lib/keywords";
 import { mockNiche, mockSerp } from "@/lib/mock";
-import { accuracyLabel, organicSourceOf, buildCityRow, buildSnapshot, estimateCityVolume, estimateOrganicDifficulty, opportunityScore, organicLabel, refreshRow, serpDifficulty } from "@/lib/scoring";
+import { TARGET_ADS, adsScore, organicEase, verdictFor, withScores, accuracyLabel, organicSourceOf, buildCityRow, buildSnapshot, estimateCityVolume, estimateOrganicDifficulty, opportunityScore, organicLabel, refreshRow, serpDifficulty } from "@/lib/scoring";
 
 describe("keywords", () => {
   it("derives variants from the niche", () => {
@@ -43,16 +43,48 @@ describe("cities", () => {
   });
 });
 
-describe("scoring", () => {
-  const base = { cpc: 15, competitionIndex: 70, organicDifficulty: 20, searchVolume: 100 };
+describe("scoring: high Google Ads + low organic competition first", () => {
+  const score = (cpc: number, idx: number, difficulty: number, volume = 100, adsCount: number | null = null) =>
+    opportunityScore({
+      adsScore: adsScore({ cpc, competitionIndex: idx, adsCount }),
+      organicEase: organicEase(difficulty, "City KD"),
+      searchVolume: volume,
+    });
 
-  it("rises with CPC and ads competition, falls with organic difficulty", () => {
-    const s = opportunityScore(base);
-    expect(opportunityScore({ ...base, cpc: 30 })).toBeGreaterThan(s);
-    expect(opportunityScore({ ...base, competitionIndex: 95 })).toBeGreaterThan(s);
-    expect(opportunityScore({ ...base, organicDifficulty: 70 })).toBeLessThan(s);
-    expect(s).toBeGreaterThanOrEqual(0);
-    expect(opportunityScore({ cpc: 1000, competitionIndex: 100, organicDifficulty: 0, searchVolume: 1e6 })).toBe(100);
+  it("Ads Score rises with CPC, competition and ads seen on the SERP", () => {
+    const base = adsScore({ cpc: 15, competitionIndex: 60, adsCount: null });
+    expect(adsScore({ cpc: 40, competitionIndex: 60, adsCount: null })).toBeGreaterThan(base);
+    expect(adsScore({ cpc: 15, competitionIndex: 95, adsCount: null })).toBeGreaterThan(base);
+    expect(adsScore({ cpc: 15, competitionIndex: 60, adsCount: 4 })).toBeGreaterThan(adsScore({ cpc: 15, competitionIndex: 60, adsCount: 0 }));
+    expect(adsScore({ cpc: 1000, competitionIndex: 100, adsCount: 5 })).toBe(100);
+    // Real "plumber tampa" ($44.64, index 73) is high-ads; "plumber new york" ($13.49, index 41) is not.
+    expect(adsScore({ cpc: 44.64, competitionIndex: 73, adsCount: null })).toBeGreaterThanOrEqual(TARGET_ADS);
+    expect(adsScore({ cpc: 13.49, competitionIndex: 41, adsCount: null })).toBeLessThan(TARGET_ADS);
+  });
+
+  it("ranks expensive-ads + easy-organic above every other combination", () => {
+    const target = score(40, 80, 15);
+    expect(target).toBeGreaterThan(score(3, 20, 15)); // cheap ads, easy organic
+    expect(target).toBeGreaterThan(score(40, 80, 75)); // expensive ads, hard organic
+    expect(target).toBeGreaterThan(score(3, 20, 75)); // neither
+    // Volume only nudges: a big but hard/cheap market doesn't beat a small target.
+    expect(target).toBeGreaterThan(score(3, 20, 75, 100_000));
+  });
+
+  it("discounts estimated organic difficulty toward neutral", () => {
+    expect(organicEase(10, "City KD")).toBe(90);
+    expect(organicEase(10, "Estimated")).toBe(70);
+    expect(organicEase(90, "Estimated")).toBe(30);
+    expect(organicEase(null, null)).toBe(50);
+  });
+
+  it("verdict quadrants", () => {
+    expect(verdictFor(80, 80, "Live SERP")).toBe("Target");
+    expect(verdictFor(80, 80, "City KD")).toBe("Target");
+    expect(verdictFor(80, 65, "Estimated")).toBe("Target?");
+    expect(verdictFor(80, 30, "Live SERP")).toBe("Ads only");
+    expect(verdictFor(30, 80, "Live SERP")).toBe("Easy, low value");
+    expect(verdictFor(30, 30, "Live SERP")).toBe("Skip");
   });
 
   it("serp difficulty grows with strong city-targeted results", () => {
@@ -103,7 +135,10 @@ describe("refreshRow (accurate check on saved rows)", () => {
     expect(r.weakResults).toBe(serp.weakResults);
     expect(r.status).toBe("done");
     expect(accuracyLabel(r)).toBe("SERP checked");
-    expect(r.score).toBe(opportunityScore({ cpc: r.cpc, competitionIndex: r.competitionIndex, organicDifficulty: serp.difficulty, searchVolume: r.searchVolume }));
+    const ads = adsScore({ cpc: r.cpc, competitionIndex: r.competitionIndex, adsCount: serp.adsCount });
+    expect(r.adsScore).toBe(ads);
+    expect(r.organicEase).toBe(organicEase(serp.difficulty, "Live SERP"));
+    expect(r.score).toBe(opportunityScore({ adsScore: ads, organicEase: r.organicEase!, searchVolume: r.searchVolume }));
   });
 
   it("applies exact city demand, keeping national CPC when the city has none", () => {
@@ -156,5 +191,44 @@ describe("organic source precedence (SERP > city KD > estimate)", () => {
     expect(organicSourceOf(legacyLive)).toBe("Live SERP");
     expect(organicSourceOf(legacyEst)).toBe("Estimated");
     expect(refreshRow(legacyEst, {}).organicEstimated).toBeUndefined();
+  });
+});
+
+describe("city-level Google Ads data", () => {
+  const city = findCity("tampa-fl")!;
+  const snap = buildSnapshot("plumber", mockNiche(["plumber"]).metrics, 0);
+  // Real response for "plumber tampa".
+  const tampa = {
+    keyword: "plumber tampa", searchVolume: 1600, cpc: 44.64, lowBid: 36.25, highBid: 120.52,
+    competition: "HIGH" as const, competitionIndex: 73, trend: Array(12).fill(1600),
+  };
+
+  it("replaces national CPC, bids and competition with the city phrase's values", () => {
+    const national = buildCityRow(city, snap, "plumber", null, null, "skipped", 28, null);
+    const r = buildCityRow(city, snap, "plumber", null, null, "skipped", 28, tampa);
+    expect(national.cpcSource).toBe("National");
+    expect(r).toMatchObject({ cpc: 44.64, cpcSource: "City keyword", lowBid: 36.25, highBid: 120.52, competitionIndex: 73 });
+    expect(r.searchVolume).toBeGreaterThanOrEqual(1600);
+    expect(r.volumeSource).toBe("City keyword");
+    expect(r.verdict).toBe("Target"); // $44.64 CPC + KD 28 = high ads, low organic
+  });
+
+  it("exact city-targeted demand still wins over the city phrase", () => {
+    const local = { searchVolume: 3000, cpc: 50, lowBid: 20, highBid: 150, competitionIndex: 90, trend: [], cost: 0 };
+    const r = buildCityRow(city, snap, "plumber", null, local, "skipped", 28, tampa);
+    expect(r).toMatchObject({ cpc: 50, cpcSource: "City", competitionIndex: 90, searchVolume: 3000, volumeSource: "Google Ads (city)" });
+  });
+
+  it("refreshRow applies city ads to national rows but never overrides exact city data", () => {
+    const national = buildCityRow(city, snap, "plumber", null, null, "skipped", 28, null);
+    expect(refreshRow(national, { cityAds: tampa })).toMatchObject({ cpc: 44.64, cpcSource: "City keyword" });
+    const exact = refreshRow(national, { local: { searchVolume: 3000, cpc: 50, lowBid: null, highBid: null, competitionIndex: 90, trend: [], cost: 0 } });
+    expect(refreshRow(exact, { cityAds: tampa })).toMatchObject({ cpc: 50, cpcSource: "City" });
+  });
+
+  it("withScores upgrades rows saved before scores existed", () => {
+    const r = buildCityRow(city, snap, "plumber", null, null, "skipped", 28, tampa);
+    const legacy = { ...r, adsScore: undefined, organicEase: undefined, verdict: undefined };
+    expect(withScores(legacy)).toMatchObject({ adsScore: r.adsScore, organicEase: r.organicEase, verdict: r.verdict, score: r.score });
   });
 });

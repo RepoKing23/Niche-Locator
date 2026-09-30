@@ -36,13 +36,33 @@ numbers only for the cities you're interested in.
 
 ### Report columns
 
-Opportunity score · City · State · Population · Market Size · Keyword · Monthly Searches · CPC · Bid Low / High ·
+Opportunity score · Verdict · Ads Score · Organic Ease · City · State · Population · Market Size · Keyword · Monthly Searches · CPC · Bid Low / High ·
 Ads Competition · Ads Index · Organic Difficulty · Organic Competition · Weak in Top 10 · Local Competitors ·
 Map Pack · Map Pack Max Reviews · Ad Value / mo · 12-mo Trend · Google link. Hidden columns you can switch on
 under **Columns**: Ads on SERP, YoY %, Niche KD (US), Volume/CPC source, Top 10 domains.
 
-**Opportunity score (0–100)** = 30% CPC (log scale, $50 max) + 20% ads competition + 35% organic ease
-(100 − organic difficulty) + 15% local search volume.
+### How cities are ranked: high Google Ads + low organic competition
+
+- **Ads Score (0–100)** = 50% CPC (log scale, $50 = max) + 30% Google Ads competition index + 20% paid ads actually seen
+  on the city's live Google results (when a SERP check ran; otherwise that weight goes to CPC and competition).
+- **Organic Ease (0–100)** = 100 − organic difficulty. Estimated difficulty is pulled halfway toward 50, so a guess
+  can't look like a sure win.
+- **Opportunity (0–100)** = 45% Ads Score + 45% Organic Ease + 10% search volume. Ties go to the higher Ads Score.
+- **Verdict:** **Target** (Ads Score ≥ 60 *and* Organic Ease ≥ 60, organic from city KD or a live SERP) ·
+  **Target?** (same, but organic only estimated: confirm it) · **Ads only** (advertisers pay, organic is hard) ·
+  **Easy, low value** (easy organic, weak ads) · **Skip**.
+- **High Ads / Low Organic** button = Verdict is Target or Target?. Untick *Target?* in the Verdict chips to see
+  confirmed rows only. You can also filter on Min Ads Score / Min Organic Ease.
+
+**City-level ads data.** Every run (except Estimate only) makes one Google Ads request for the phrases people search,
+e.g. "plumber tampa": ~$0.09 for up to 1,000 cities. It gives each city its **own CPC, top-of-page bids and competition**.
+In a real test, "plumber tampa" had a $44.64 CPC and index 73, while "plumber new york" had $13.49 and index 41. Cities
+without ads data for the phrase keep the national value, marked `US`. Exact city-targeted Google Ads data
+("Exact city volume") still wins when you fetch it.
+
+**Spend where it matters:** **Confirm targets** runs a queued SERP check (~$0.0006/city) only on Target / Target?
+rows that haven't been SERP-checked, so paid checks go to cities that already look like high ads + low organic.
+On Keyword Lists, **Accurate data → Only Target / Target? rows** does the same for saved rows.
 
 **Organic difficulty (0–100)** is calculated from the live SERP. Each strong result that targets the
 city counts heavily, other strong results count a little, and a map pack with lots of reviews adds some.
@@ -75,7 +95,7 @@ A list can mix niches and runs. Saving the same city/niche again refreshes its n
 
 | Option | Cost | What you get |
 |---|---|---|
-| **City keyword difficulty** (default) | ~$0.0001/city + $0.01/request | DataForSEO Labs difficulty for the real search phrase, e.g. "plumber austin". Most cities get a value; rare phrases return none and keep the estimate |
+| **City ads + keyword difficulty** (default) | ~$0.0001/city + $0.01/request | DataForSEO Labs difficulty for the real search phrase, e.g. "plumber austin". Most cities get a value; rare phrases return none and keep the estimate |
 | **Queued SERP check** | ~$0.0006/city | Full live top-10 analysis (weak sites, local competitors, map pack), results in ~1–5 min |
 | **Live SERP check** | ~$0.002/city | Same analysis, results in seconds |
 | **Estimate only** | free | Size-based guess: 10 + ½ national KD + up to 35 for city size |
@@ -138,8 +158,8 @@ their own lists and reports (enforced by row-level security in the database).
 1. **Create the tables.** Either:
    - with the Supabase GitHub integration, set the Supabase directory to `supabase` and a production branch
      (this repo has no `main` yet). The integration applies `supabase/migrations/*.sql` when that branch changes, or
-   - paste each file in `supabase/migrations/` (in order: `20260929…_keyword_lists.sql`, then
-     `20260930…_api_cache.sql`) into the Supabase **SQL Editor** and run it.
+   - paste each file in `supabase/migrations/` in order (`20260929…_keyword_lists.sql`,
+     `20260930…_api_cache.sql`, `20261001…_api_cache_ads.sql`) into the Supabase **SQL Editor** and run it.
 2. **Keys:** from Project Settings → API, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    in `.env.local` (and in Vercel's environment variables).
 3. **Auth:** Authentication → Providers → Email is on by default. Under Authentication → URL Configuration,

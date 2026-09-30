@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { COLUMNS, type Column } from "./columns";
 import { downloadBlob, slugify, toCsv, toTsv, type Cell } from "@/lib/export";
-import type { CityRow, OrganicLabel } from "@/lib/types";
+import type { CityRow, OrganicLabel, Verdict } from "@/lib/types";
 
 type Filters = {
   search: string;
@@ -15,16 +15,21 @@ type Filters = {
   minAdsIndex: number | "";
   maxOrganic: number | "";
   minScore: number | "";
+  minAdsScore: number | "";
+  minEase: number | "";
   organic: OrganicLabel[];
+  verdicts: Verdict[];
 };
 
 const EMPTY: Filters = {
   search: "", states: [], tiers: [], minPopulation: "", minVolume: "", minCpc: "", minAdsIndex: "",
-  maxOrganic: "", minScore: "", organic: [],
+  maxOrganic: "", minScore: "", minAdsScore: "", minEase: "", organic: [], verdicts: [],
 };
 
-/** "High ads / low organic" preset. */
-const PRESET: Partial<Filters> = { minCpc: 5, minAdsIndex: 50, maxOrganic: 30 };
+const VERDICTS: Verdict[] = ["Target", "Target?", "Ads only", "Easy, low value", "Skip"];
+
+/** "High ads / low organic" preset = Target rows (Target? = organic still estimated, shown until you untick it). */
+const PRESET_VERDICTS: Verdict[] = ["Target", "Target?"];
 
 const PAGE_SIZE = 100;
 
@@ -84,10 +89,16 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
         if (f.minAdsIndex !== "" && (r.competitionIndex ?? 0) < f.minAdsIndex) return false;
         if (f.maxOrganic !== "" && (r.organicDifficulty == null || r.organicDifficulty > f.maxOrganic)) return false;
         if (f.minScore !== "" && r.score < f.minScore) return false;
+        if (f.minAdsScore !== "" && (r.adsScore ?? 0) < f.minAdsScore) return false;
+        if (f.minEase !== "" && (r.organicEase ?? 0) < f.minEase) return false;
+        if (f.verdicts.length && (!r.verdict || !f.verdicts.includes(r.verdict))) return false;
         if (f.organic.length && !f.organic.includes(r.organic)) return false;
         return true;
       })
-      .sort((a, b) => compare(col.value(a), col.value(b), sort.dir === "asc" ? 1 : -1));
+      .sort((a, b) =>
+        compare(col.value(a), col.value(b), sort.dir === "asc" ? 1 : -1) ||
+        // Ties: higher Ads Score first — the goal is high ads value.
+        compare(a.adsScore ?? null, b.adsScore ?? null, -1));
   }, [rows, filters, sort, allColumns, searchText]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -149,7 +160,7 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
 
   const filterList = describeFilters(filters);
   if (scope === "selected") filterList.push(`Selected rows: ${selectedRows.length}`);
-  const presetActive = Object.entries(PRESET).every(([k, v]) => filters[k as keyof Filters] === v);
+  const presetActive = filters.verdicts.length > 0 && filters.verdicts.every((v) => PRESET_VERDICTS.includes(v));
   const toggleIn = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
   return (
@@ -158,9 +169,9 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
       <div className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex flex-wrap items-end gap-3">
           <button
-            onClick={() => updateFilters(presetActive ? EMPTY : { ...EMPTY, ...PRESET })}
+            onClick={() => updateFilters(presetActive ? EMPTY : { ...EMPTY, verdicts: PRESET_VERDICTS })}
             className={`rounded-md px-3 py-2 text-sm font-semibold ${presetActive ? "bg-emerald-600 text-white" : "border border-emerald-600 text-emerald-700 dark:text-emerald-400"}`}
-            title="CPC ≥ $5, Ads Index ≥ 50, Organic Difficulty ≤ 30 (edit the fields to fine-tune)"
+            title="Verdict Target / Target?: Ads Score ≥ 60 and Organic Ease ≥ 60. Untick “Target?” under Verdict to show only confirmed rows."
           >
             {presetActive ? "✓ " : ""}High Ads / Low Organic
           </button>
@@ -168,6 +179,15 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
             <input className="input w-40" placeholder="City, state, niche…" value={filters.search}
               onChange={(e) => updateFilters({ ...filters, search: e.target.value })} />
           </Field>
+          <Field label="Verdict">
+            <div className="flex gap-1">
+              {VERDICTS.map((v) => (
+                <Chip key={v} on={filters.verdicts.includes(v)} onClick={() => updateFilters({ ...filters, verdicts: toggleIn(filters.verdicts, v) })}>{v}</Chip>
+              ))}
+            </div>
+          </Field>
+          <NumField label="Min Ads Score" value={filters.minAdsScore} onChange={(v) => updateFilters({ ...filters, minAdsScore: v })} />
+          <NumField label="Min Organic Ease" value={filters.minEase} onChange={(v) => updateFilters({ ...filters, minEase: v })} />
           <NumField label="Min CPC $" value={filters.minCpc} onChange={(v) => updateFilters({ ...filters, minCpc: v })} />
           <NumField label="Min Ads Index" value={filters.minAdsIndex} onChange={(v) => updateFilters({ ...filters, minAdsIndex: v })} />
           <NumField label="Max Organic Diff." value={filters.maxOrganic} onChange={(v) => updateFilters({ ...filters, maxOrganic: v })} />
@@ -311,6 +331,9 @@ function describeFilters(f: Filters): string[] {
   if (f.minAdsIndex !== "") out.push(`Ads index ≥ ${f.minAdsIndex}`);
   if (f.maxOrganic !== "") out.push(`Organic difficulty ≤ ${f.maxOrganic}`);
   if (f.minScore !== "") out.push(`Opportunity score ≥ ${f.minScore}`);
+  if (f.minAdsScore !== "") out.push(`Ads Score ≥ ${f.minAdsScore}`);
+  if (f.minEase !== "") out.push(`Organic Ease ≥ ${f.minEase}`);
+  if (f.verdicts.length) out.push(`Verdict: ${f.verdicts.join(", ")}`);
   if (f.organic.length) out.push(`Organic competition: ${f.organic.join(", ")}`);
   return out;
 }

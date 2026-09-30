@@ -5,7 +5,7 @@ import AccurateRun from "./AccurateRun";
 import DataTable, { type ActionContext } from "./DataTable";
 import SaveToList from "./SaveToList";
 import type { Column } from "./columns";
-import { accuracyLabel } from "@/lib/scoring";
+import { accuracyLabel, withScores } from "@/lib/scoring";
 import { getStore } from "@/lib/store";
 import type { CityRow, KeywordList, ListItem } from "@/lib/types";
 
@@ -93,7 +93,7 @@ export default function ListsManager({ mode, active: visible = true }: { mode: "
 
   // The table keys rows by id, so each saved item gets its own id (same city can appear for several niches).
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
-  const rows: CityRow[] = useMemo(() => items.map((i) => ({ ...i.row, id: i.id })), [items]);
+  const rows: CityRow[] = useMemo(() => items.map((i) => withScores({ ...i.row, id: i.id })), [items]);
 
   const saveNote = useCallback((id: string, note: string) => {
     const item = byId.get(id);

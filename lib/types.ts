@@ -2,6 +2,9 @@ export type Competition = "LOW" | "MEDIUM" | "HIGH";
 
 export type OrganicLabel = "Low" | "Medium" | "High" | "Unknown";
 
+/** Quadrant of Ads Score × Organic Ease. "Target?" = looks like a target but organic is only estimated. */
+export type Verdict = "Target" | "Target?" | "Ads only" | "Easy, low value" | "Skip";
+
 /** How a research run gathers organic difficulty, cheapest last. */
 export type OrganicMode = "kd" | "queued" | "live" | "estimate";
 
@@ -77,9 +80,11 @@ export type CityRow = {
   tier: "Major" | "Mid" | "Small";
   keyword: string;
   searchVolume: number;
-  volumeSource: "Google Ads (city)" | "Estimated";
+  /** Google Ads (city) = exact city-targeted demand; City keyword = volume of "<keyword> <city>" searches (a floor). */
+  volumeSource: "Google Ads (city)" | "City keyword" | "Estimated";
   cpc: number;
-  cpcSource: "City" | "National";
+  /** City = city-targeted Google Ads; City keyword = CPC of "<keyword> <city>"; National = US average fallback. */
+  cpcSource: "City" | "City keyword" | "National";
   lowBid: number | null;
   highBid: number | null;
   competition: Competition | null;
@@ -99,6 +104,11 @@ export type CityRow = {
   adValue: number;
   trend: number[];
   yoy: number | null;
+  /** 0-100: how much advertisers pay/compete here (CPC, ads competition, ads seen on the SERP). */
+  adsScore?: number;
+  /** 0-100: how easy organic rankings are (100 − difficulty; estimates pulled toward 50). */
+  organicEase?: number;
+  verdict?: Verdict;
   score: number;
   /** "skipped" = the run was an estimate-only scan without a live SERP check. */
   status: "pending" | "done" | "error" | "skipped";
@@ -121,6 +131,9 @@ export type Report = {
   organicMode?: OrganicMode;
   /** City keyword difficulty per city (null = no Labs data for that phrase). */
   kds?: Record<string, number | null>;
+  /** Google Ads data for "<keyword> <city>" per city (null = no ads data for that phrase). */
+  ads?: Record<string, KeywordMetrics | null>;
+  adsPending?: boolean;
   /** True while SERP / KD results are still being collected. */
   serpPending?: boolean;
   kdPending?: boolean;

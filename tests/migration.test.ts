@@ -89,5 +89,6 @@ describe("supabase migration", () => {
       on conflict (kind, key) do update set data = excluded.data, created_at = now()`);
     expect((await as(USER_A, "select data from api_cache where key = 'plumber|austin-tx'")).rows[0].data).toBe(9);
     await expect(as(USER_A, "insert into api_cache (kind, key, data) values ('bogus', 'x', '1')")).rejects.toThrow();
+    await as(USER_A, "insert into api_cache (kind, key, data) values ('ads', 'plumber|tampa-fl', '{\"cpc\": 44.64}')");
   });
 });

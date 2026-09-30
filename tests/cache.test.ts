@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryCache, cacheKey, fresh } from "@/lib/cache";
-import { getCityKd, getLocal } from "@/lib/fetchers";
+import { getCityAds, getCityKd, getLocal } from "@/lib/fetchers";
 import { LocalStore, type KV } from "@/lib/store/local";
 
 function memoryKV(): KV {
@@ -59,5 +59,24 @@ describe("result cache", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(a.cached).toBe(false);
     expect(b).toMatchObject({ cached: true, demand: { searchVolume: 70, cost: 0 } });
+  });
+});
+
+describe("city ads cache", () => {
+  it("caches city ads (including null = no ads data) and skips the paid call next time", async () => {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { cityIds: string[] };
+      return new Response(JSON.stringify({
+        results: Object.fromEntries(body.cityIds.map((id) => [id, id === "boise-id" ? null : { keyword: "plumber tampa", cpc: 44.64 }])),
+        cost: 0.09,
+      }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const store = new LocalStore(memoryKV(), new MemoryCache());
+    const first = await getCityAds("plumber", ["tampa-fl", "boise-id"], { store });
+    expect(first).toMatchObject({ cost: 0.09, cached: 0, results: { "boise-id": null } });
+    const second = await getCityAds("plumber", ["tampa-fl", "boise-id"], { store });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(second).toMatchObject({ cost: 0, cached: 2 });
   });
 });

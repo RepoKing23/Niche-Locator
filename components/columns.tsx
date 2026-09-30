@@ -27,7 +27,7 @@ export function Sparkline({ values }: { values: number[] }) {
 }
 
 function ScoreCell({ score }: { score: number }) {
-  const tone = score >= 65 ? "bg-emerald-500" : score >= 45 ? "bg-amber-500" : "bg-rose-500";
+  const tone = score >= 60 ? "bg-emerald-500" : score >= 40 ? "bg-amber-500" : "bg-rose-500";
   return (
     <div className="flex items-center gap-2">
       <span className="w-7 text-right font-semibold tabular-nums">{score}</span>
@@ -48,9 +48,16 @@ const SOURCE_TAG = {
   Estimated: { text: "est.", title: "Estimated from niche difficulty and city size — no city data yet" },
 } as const;
 
+const VERDICT_TONE = {
+  Target: "good", "Target?": "mid", "Ads only": "none", "Easy, low value": "none", Skip: "bad",
+} as const;
+
 /** UI renderers; columns without one show their raw value. */
 const RENDER: Record<string, (r: CityRow) => ReactNode> = {
   score: (r) => <ScoreCell score={r.score} />,
+  adsScore: (r) => (r.adsScore == null ? "—" : <ScoreCell score={r.adsScore} />),
+  organicEase: (r) => (r.organicEase == null ? "—" : <ScoreCell score={r.organicEase} />),
+  verdict: (r) => (r.verdict ? <Badge tone={VERDICT_TONE[r.verdict]}>{r.verdict}</Badge> : "—"),
   city: (r) => <span className="font-medium">{r.city}</span>,
   population: (r) => int(r.population),
   searchVolume: (r) => (
@@ -62,7 +69,7 @@ const RENDER: Record<string, (r: CityRow) => ReactNode> = {
   cpc: (r) => (
     <span>
       {money(r.cpc)}
-      {r.cpcSource === "National" && <span className="ml-1 text-xs text-zinc-400">US</span>}
+      {r.cpcSource === "National" && <span className="ml-1 text-xs text-zinc-400" title="US average — no city ads data">US</span>}
     </span>
   ),
   lowBid: (r) => money(r.lowBid),

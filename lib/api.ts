@@ -7,13 +7,16 @@ export const PRICES = {
   serpQueued: 0.0006,
   kdRequest: 0.01,
   kdKeyword: 0.0001,
+  /** Google Ads search_volume: flat per request of up to 1,000 phrases. */
+  cityAdsRequest: 0.09,
   local: 0.09,
 };
 
-/** Estimated DataForSEO cost of organic data for n cities (before cache hits). */
+/** Estimated DataForSEO cost of city ads + organic data for n cities (before cache hits). */
 export function organicCost(mode: "kd" | "queued" | "live" | "estimate", n: number): number {
   if (mode === "estimate" || n === 0) return 0;
-  const kd = Math.ceil(n / 1000) * PRICES.kdRequest + n * PRICES.kdKeyword;
+  const requests = Math.ceil(n / 1000);
+  const kd = requests * (PRICES.kdRequest + PRICES.cityAdsRequest) + n * PRICES.kdKeyword;
   if (mode === "kd") return kd;
   return kd + n * (mode === "queued" ? PRICES.serpQueued : PRICES.serp);
 }

@@ -4,10 +4,10 @@
  * same keyword + city is never paid for twice within CACHE_MAX_AGE_DAYS.
  */
 import { SERP_BATCH, SERP_PARALLEL, postJson, sleep } from "./api";
-import { cacheKey } from "./cache";
+import { cacheKey, type CacheKind } from "./cache";
 import { chunk } from "./keywords";
 import type { Store } from "./store/types";
-import type { LocalDemand, SerpInfo } from "./types";
+import type { KeywordMetrics, LocalDemand, SerpInfo } from "./types";
 
 export type FetchOptions = {
   store: Store;
@@ -18,7 +18,7 @@ export type FetchOptions = {
 
 export type Batch<T> = { results: Record<string, T>; errors: Record<string, string>; cost: number; cached: number };
 
-async function fromCache<T>(opts: FetchOptions, kind: "kd" | "serp" | "local", keys: Map<string, string>) {
+async function fromCache<T>(opts: FetchOptions, kind: CacheKind, keys: Map<string, string>) {
   if (opts.refresh) return new Map<string, T>();
   try {
     const hits = await opts.store.getCached(kind, [...keys.values()]);
@@ -30,7 +30,7 @@ async function fromCache<T>(opts: FetchOptions, kind: "kd" | "serp" | "local", k
   }
 }
 
-async function toCache(opts: FetchOptions, kind: "kd" | "serp" | "local", entries: [string, unknown][]) {
+async function toCache(opts: FetchOptions, kind: CacheKind, entries: [string, unknown][]) {
   if (!entries.length) return;
   try {
     await opts.store.putCached(kind, entries);
@@ -55,6 +55,29 @@ export async function getCityKd(
       Object.assign(out.results, r.results);
       out.cost += r.cost;
       await toCache(opts, "kd", Object.entries(r.results).map(([id, v]) => [keys.get(id)!, v]));
+    } catch (e) {
+      ids.forEach((id) => (out.errors[id] = (e as Error).message));
+    }
+  }
+  return out;
+}
+
+// ---------- City-level Google Ads ("<keyword> <city>", ~$0.09 per 1,000 cities) ----------
+
+export async function getCityAds(
+  keyword: string, cityIds: string[], opts: FetchOptions,
+): Promise<Batch<KeywordMetrics | null>> {
+  const keys = new Map(cityIds.map((id) => [id, cacheKey.ads(keyword, id)]));
+  const hits = await fromCache<KeywordMetrics | null>(opts, "ads", keys);
+  const out: Batch<KeywordMetrics | null> = { results: Object.fromEntries(hits), errors: {}, cost: 0, cached: hits.size };
+  const missing = cityIds.filter((id) => !hits.has(id));
+  for (const ids of chunk(missing, 1000)) {
+    if (opts.shouldStop?.()) break;
+    try {
+      const r = await postJson<{ results: Record<string, KeywordMetrics | null>; cost: number }>("/api/city-ads", { keyword, cityIds: ids });
+      Object.assign(out.results, r.results);
+      out.cost += r.cost;
+      await toCache(opts, "ads", Object.entries(r.results).map(([id, v]) => [keys.get(id)!, v]));
     } catch (e) {
       ids.forEach((id) => (out.errors[id] = (e as Error).message));
     }

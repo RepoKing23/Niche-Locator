@@ -1,10 +1,11 @@
 /** Kinds of DataForSEO results we cache, and how keys are built for them. */
-export type CacheKind = "kd" | "serp" | "local";
+export type CacheKind = "kd" | "serp" | "local" | "ads";
 
 export const CACHE_MAX_AGE_DAYS = 30;
 
 export const cacheKey = {
   kd: (keyword: string, cityId: string) => `${keyword}|${cityId}`,
+  ads: (keyword: string, cityId: string) => `${keyword}|${cityId}`,
   serp: (keyword: string, cityId: string) => `${keyword}|${cityId}`,
   local: (variants: string[], cityId: string) => `${[...new Set(variants)].sort().join(",")}|${cityId}`,
 };

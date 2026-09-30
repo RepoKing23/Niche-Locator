@@ -1,6 +1,6 @@
 import type { City } from "./cities";
 import type {
-  CityRow, Competition, KeywordMetrics, LocalDemand, NicheSnapshot, OrganicLabel, OrganicSource, SerpInfo,
+  CityRow, Competition, KeywordMetrics, LocalDemand, NicheSnapshot, OrganicLabel, OrganicSource, SerpInfo, Verdict,
 } from "./types";
 
 const US_POPULATION = 331_000_000;
@@ -119,21 +119,59 @@ export function buildSnapshot(niche: string, variants: KeywordMetrics[], cost: n
   };
 }
 
+/** Score thresholds for the verdict quadrants. */
+export const TARGET_ADS = 60;
+export const TARGET_EASE = 60;
+
 /**
- * Opportunity score 0-100 — high when advertisers pay a lot and organic results are weak.
- *   30% CPC (log scale, $50 = max) · 20% ads competition · 35% organic ease · 15% local volume (log, 1k = max)
+ * Ads Score 0-100 — how valuable this market is to advertisers:
+ *   50% CPC (log scale, $50 = max) · 30% Google Ads competition index · 20% paid ads seen on the live SERP (3+ = max).
+ * Without a SERP check, the SERP weight is shared by CPC and competition.
  */
-export function opportunityScore(input: {
-  cpc: number;
-  competitionIndex: number | null;
-  organicDifficulty: number | null;
-  searchVolume: number;
-}): number {
+export function adsScore(input: { cpc: number; competitionIndex: number | null; adsCount: number | null }): number {
   const cpcPart = clamp01(Math.log1p(input.cpc) / Math.log1p(50));
-  const adsPart = clamp01((input.competitionIndex ?? 0) / 100);
-  const easePart = clamp01((100 - (input.organicDifficulty ?? 50)) / 100);
+  const compPart = clamp01((input.competitionIndex ?? 0) / 100);
+  if (input.adsCount == null) return Math.round(100 * (0.625 * cpcPart + 0.375 * compPart));
+  return Math.round(100 * (0.5 * cpcPart + 0.3 * compPart + 0.2 * clamp01(input.adsCount / 3)));
+}
+
+/**
+ * Organic Ease 0-100 = 100 − organic difficulty. Estimated (size-based) values are pulled halfway
+ * toward 50 so a guess never looks like a sure win; unknown = 50.
+ */
+export function organicEase(difficulty: number | null, source: OrganicSource | null): number {
+  if (difficulty == null) return 50;
+  const ease = clamp01((100 - difficulty) / 100) * 100;
+  return Math.round(source === "Estimated" ? 50 + (ease - 50) * 0.5 : ease);
+}
+
+/** Opportunity 0-100 — ranks on the two goals: 45% Ads Score + 45% Organic Ease + 10% volume (log, 1k = max). */
+export function opportunityScore(input: { adsScore: number; organicEase: number; searchVolume: number }): number {
   const volPart = clamp01(Math.log10(input.searchVolume + 1) / Math.log10(1001));
-  return Math.round(30 * cpcPart + 20 * adsPart + 35 * easePart + 15 * volPart);
+  return Math.round(0.45 * input.adsScore + 0.45 * input.organicEase + 10 * volPart);
+}
+
+export function verdictFor(ads: number, ease: number, source: OrganicSource | null): Verdict {
+  const highAds = ads >= TARGET_ADS;
+  const easy = ease >= TARGET_EASE;
+  if (highAds && easy) return source === "Live SERP" || source === "City KD" ? "Target" : "Target?";
+  if (highAds) return "Ads only";
+  if (easy) return "Easy, low value";
+  return "Skip";
+}
+
+/** (Re)compute Ads Score, Organic Ease, Opportunity and Verdict from a row's data (also upgrades old saved rows). */
+export function withScores(row: CityRow): CityRow {
+  const source = organicSourceOf(row);
+  const ads = adsScore({ cpc: row.cpc, competitionIndex: row.competitionIndex, adsCount: row.adsCount });
+  const ease = organicEase(row.organicDifficulty, source);
+  return {
+    ...row,
+    adsScore: ads,
+    organicEase: ease,
+    verdict: verdictFor(ads, ease, source),
+    score: opportunityScore({ adsScore: ads, organicEase: ease, searchVolume: row.searchVolume }),
+  };
 }
 
 /**
@@ -159,19 +197,28 @@ export function buildCityRow(
   status: CityRow["status"],
   /** DataForSEO Labs keyword difficulty for "<keyword> <city>" (null = no data). */
   cityKd: number | null = null,
+  /** Google Ads data for "<keyword> <city>" (null = no ads data). */
+  cityAds: KeywordMetrics | null = null,
 ): CityRow {
-  const searchVolume = local ? local.searchVolume : estimateCityVolume(snapshot.nationalVolume, city.population);
-  const cityCpc = local?.cpc ?? null;
-  const cpc = round2(cityCpc ?? snapshot.cpc);
-  const competitionIndex = local?.competitionIndex ?? snapshot.competitionIndex;
+  // Ads data precedence: exact city-targeted (local) > "<keyword> <city>" phrase (cityAds) > national.
+  const estimated = estimateCityVolume(snapshot.nationalVolume, city.population);
+  const geoVolume = cityAds?.searchVolume ?? 0;
+  const searchVolume = local ? local.searchVolume : Math.max(estimated, geoVolume);
+  const volumeSource: CityRow["volumeSource"] = local ? "Google Ads (city)" : geoVolume > estimated ? "City keyword" : "Estimated";
+  const cpcRaw = local?.cpc ?? cityAds?.cpc ?? null;
+  const cpcSource: CityRow["cpcSource"] = local?.cpc != null ? "City" : cityAds?.cpc != null ? "City keyword" : "National";
+  const cpc = round2(cpcRaw ?? snapshot.cpc);
+  const competitionIndex = local?.competitionIndex ?? cityAds?.competitionIndex ?? snapshot.competitionIndex;
   const scale = snapshot.nationalVolume ? searchVolume / snapshot.nationalVolume : 0;
   const trend =
-    local && local.trend.length ? local.trend : snapshot.trend.map((v) => Math.round(v * scale));
+    local && local.trend.length ? local.trend
+      : volumeSource === "City keyword" && cityAds?.trend.length ? cityAds.trend
+        : snapshot.trend.map((v) => Math.round(v * scale));
   const organicSource: OrganicSource = serp ? "Live SERP" : cityKd != null ? "City KD" : "Estimated";
   const organicDifficulty = serp
     ? serp.difficulty
     : cityKd ?? estimateOrganicDifficulty(snapshot.difficulty, city.population);
-  return {
+  return withScores({
     id: city.id,
     city: city.name,
     state: city.state,
@@ -180,11 +227,11 @@ export function buildCityRow(
     tier: city.tier,
     keyword,
     searchVolume,
-    volumeSource: local ? "Google Ads (city)" : "Estimated",
+    volumeSource,
     cpc,
-    cpcSource: cityCpc != null ? "City" : "National",
-    lowBid: local?.lowBid ?? snapshot.lowBid,
-    highBid: local?.highBid ?? snapshot.highBid,
+    cpcSource,
+    lowBid: local?.lowBid ?? cityAds?.lowBid ?? snapshot.lowBid,
+    highBid: local?.highBid ?? cityAds?.highBid ?? snapshot.highBid,
     competition: competitionFromIndex(competitionIndex),
     competitionIndex,
     nicheDifficulty: snapshot.difficulty,
@@ -200,9 +247,9 @@ export function buildCityRow(
     adValue: round2(searchVolume * cpc),
     trend,
     yoy: yoy(trend),
-    score: opportunityScore({ cpc, competitionIndex, organicDifficulty, searchVolume }),
+    score: 0,
     status,
-  };
+  });
 }
 
 /**
@@ -212,11 +259,28 @@ export function buildCityRow(
  */
 export function refreshRow(
   row: CityRow,
-  update: { serp?: SerpInfo | null; local?: LocalDemand | null; cityKd?: number | null },
+  update: { serp?: SerpInfo | null; local?: LocalDemand | null; cityKd?: number | null; cityAds?: KeywordMetrics | null },
 ): CityRow {
   const next: CityRow = { ...row, organicSource: organicSourceOf(row) ?? undefined };
   delete next.organicEstimated;
-  const { serp, local, cityKd } = update;
+  const { serp, local, cityKd, cityAds } = update;
+  // "<keyword> <city>" ads data upgrades national values, never exact city-targeted ones.
+  if (cityAds && row.cpcSource !== "City") {
+    if (cityAds.cpc != null) {
+      next.cpc = round2(cityAds.cpc);
+      next.cpcSource = "City keyword";
+    }
+    if (cityAds.competitionIndex != null) next.competitionIndex = cityAds.competitionIndex;
+    next.competition = competitionFromIndex(next.competitionIndex);
+    next.lowBid = cityAds.lowBid ?? next.lowBid;
+    next.highBid = cityAds.highBid ?? next.highBid;
+    if (row.volumeSource !== "Google Ads (city)" && (cityAds.searchVolume ?? 0) > next.searchVolume) {
+      next.searchVolume = cityAds.searchVolume!;
+      next.volumeSource = "City keyword";
+      if (cityAds.trend.length) next.trend = cityAds.trend;
+      next.yoy = yoy(next.trend);
+    }
+  }
   // City KD replaces an estimate, never a live SERP result.
   if (cityKd != null && !serp && next.organicSource !== "Live SERP") {
     next.organicDifficulty = cityKd;
@@ -252,13 +316,7 @@ export function refreshRow(
     next.yoy = yoy(next.trend);
   }
   next.adValue = round2(next.searchVolume * next.cpc);
-  next.score = opportunityScore({
-    cpc: next.cpc,
-    competitionIndex: next.competitionIndex,
-    organicDifficulty: next.organicDifficulty,
-    searchVolume: next.searchVolume,
-  });
-  return next;
+  return withScores(next);
 }
 
 /** Organic source of a row, including rows saved before `organicSource` existed. */

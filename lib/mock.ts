@@ -87,3 +87,11 @@ export function mockCityDifficulty(keyword: string, city: City): number | null {
   const size = Math.min(1, Math.log10(Math.max(city.population, 10_000) / 10_000) / Math.log10(800));
   return Math.round(Math.min(100, rand(`${keyword}|${city.id}|kd2`) * 45 + size * 30));
 }
+
+/** Fake Google Ads data for "<keyword> <city>": city CPCs vary around the niche level, ~25% have no data. */
+export function mockCityAds(keyword: string, city: City): KeywordMetrics | null {
+  const phrase = `${keyword} ${city.name.toLowerCase()}`;
+  if (rand(`${phrase}|ads`) < 0.25) return null;
+  const base = 4 + rand(keyword.split(" ")[0]) * 22;
+  return fakeMetrics(phrase, (city.population / 1_000_000) * 60, base * (0.5 + rand(`${phrase}|cpc`) * 1.2));
+}

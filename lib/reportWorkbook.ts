@@ -50,7 +50,12 @@ function autoWidth(ws: ExcelJS.Worksheet, min = 8, max = 50) {
 }
 
 function toneFor(key: string, r: CityRow): string | null {
-  if (key === "score") return r.score >= 65 ? COLORS.good : r.score >= 45 ? COLORS.mid : COLORS.bad;
+  if (key === "score") return r.score >= 60 ? COLORS.good : r.score >= 40 ? COLORS.mid : COLORS.bad;
+  if (key === "adsScore" || key === "organicEase") {
+    const v = key === "adsScore" ? r.adsScore : r.organicEase;
+    return v == null ? null : v >= 60 ? COLORS.good : v >= 40 ? COLORS.mid : COLORS.bad;
+  }
+  if (key === "verdict") return r.verdict === "Target" ? COLORS.good : r.verdict === "Target?" ? COLORS.mid : r.verdict === "Skip" ? COLORS.bad : null;
   if (key === "organic") {
     return r.organic === "Low" ? COLORS.good : r.organic === "Medium" ? COLORS.mid : r.organic === "High" ? COLORS.bad : null;
   }
@@ -129,14 +134,20 @@ function addSummary(wb: ExcelJS.Workbook, input: ReportExportInput, bestFirst: C
   kv("Low organic competition", count("Low"));
   kv("Medium organic competition", count("Medium"));
   kv("High organic competition", count("High"));
+  kv("Targets (high ads + low organic, confirmed)", input.rows.filter((r) => r.verdict === "Target").length);
+  kv("Possible targets (organic still estimated)", input.rows.filter((r) => r.verdict === "Target?").length);
+  kv("Cities with city-level CPC", input.rows.filter((r) => r.cpcSource !== "National").length);
   kv("Cities with exact Google Ads volume", input.rows.filter((r) => r.volumeSource !== "Estimated").length);
   kv("API spend", input.spent, "$#,##0.000");
 
   section("Top 10 opportunities");
-  const head = ws.addRow(["City", "State", "Score", "CPC", "Monthly searches", "Organic diff.", "Organic comp."]);
+  const head = ws.addRow(["City", "State", "Score", "CPC", "Monthly searches", "Organic diff.", "Organic comp.", "Verdict", "Ads Score", "Organic Ease"]);
   styleHeader(head);
   for (const r of bestFirst.slice(0, 10)) {
-    const row = ws.addRow([r.city, r.stateCode, r.score, r.cpc, r.searchVolume, r.organicDifficulty ?? "", r.organic]);
+    const row = ws.addRow([r.city, r.stateCode, r.score, r.cpc, r.searchVolume, r.organicDifficulty ?? "", r.organic,
+      r.verdict ?? "", r.adsScore ?? "", r.organicEase ?? ""]);
+    const verdictTone = toneFor("verdict", r);
+    if (verdictTone) row.getCell(8).fill = fill(verdictTone);
     row.getCell(3).fill = fill(toneFor("score", r)!);
     row.getCell(4).numFmt = "$#,##0.00";
     row.getCell(5).numFmt = "#,##0";
@@ -150,11 +161,15 @@ function addSummary(wb: ExcelJS.Workbook, input: ReportExportInput, bestFirst: C
 
   section("How to read this report");
   [
-    "Opportunity (0-100) = 30% CPC + 20% ads competition + 35% organic ease + 15% local search volume.",
+    "Goal: high Google Ads value AND low organic competition.",
+    "Ads Score (0-100) = 50% CPC (log scale, $50 max) + 30% Google Ads competition + 20% paid ads seen on the live SERP (when checked).",
+    "Organic Ease (0-100) = 100 − organic difficulty; estimated values are pulled toward 50 until confirmed.",
+    "Verdict: Target = Ads Score ≥ 60 and Organic Ease ≥ 60; Target? = same but organic only estimated; Ads only; Easy, low value; Skip.",
+    "Opportunity (0-100) = 45% Ads Score + 45% Organic Ease + 10% search volume.",
     "Organic Diff. (0-100) comes from the live Google top 10 in each city: directories, job boards, social and big-box sites are weak;",
     "  results from businesses targeting the city are strong; a map pack with many reviews adds difficulty. Below 30 = Low, 60+ = High.",
     "Volume Source 'Estimated' = national volume × city population (fetch exact city volume in the app for Google Ads city data).",
-    "CPC Source 'National' = the city had no CPC data, so the US average is used.",
+    "CPC Source: 'City' = city-targeted Google Ads; 'City keyword' = CPC of \"keyword + city\"; 'National' = US average (no city data).",
     "Hover over the column headers in the All Cities sheet for a description of each column.",
   ].forEach((t) => ws.addRow([t]));
 }

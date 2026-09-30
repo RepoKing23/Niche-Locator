@@ -2,8 +2,8 @@
 
 import { useRef, useState } from "react";
 import { LOCAL_INTERVAL_MS, PRICES, QUEUE_POLL_MS, sleep } from "@/lib/api";
-import { getCityKd, getLiveSerps, getLocal, getQueuedSerps, type Batch } from "@/lib/fetchers";
-import { refreshRow } from "@/lib/scoring";
+import { getCityAds, getCityKd, getLiveSerps, getLocal, getQueuedSerps, type Batch } from "@/lib/fetchers";
+import { refreshRow, withScores } from "@/lib/scoring";
 import { getStore } from "@/lib/store";
 import type { ListItem, SerpInfo } from "@/lib/types";
 
@@ -22,8 +22,10 @@ type Progress = { label: string; done: number; total: number };
  * Runs DataForSEO checks on saved list rows only, so credits are spent on the shortlist
  * instead of every city. Results younger than 30 days are reused from the cache for free.
  */
-export default function AccurateRun({ items, mode, flash, onUpdated }: Props) {
+export default function AccurateRun({ items: allItems, mode, flash, onUpdated }: Props) {
   const [open, setOpen] = useState(false);
+  const [onlyTargets, setOnlyTargets] = useState(false);
+  const [doAds, setDoAds] = useState(true);
   const [doKd, setDoKd] = useState(true);
   const [serpMode, setSerpMode] = useState<"off" | "queued" | "live">("queued");
   const [doLocal, setDoLocal] = useState(false);
@@ -31,16 +33,23 @@ export default function AccurateRun({ items, mode, flash, onUpdated }: Props) {
   const [progress, setProgress] = useState<Progress | null>(null);
   const stopRef = useRef(false);
 
+  const isTarget = (i: ListItem) => {
+    const v = withScores(i.row).verdict;
+    return v === "Target" || v === "Target?";
+  };
+  const targetCount = allItems.filter(isTarget).length;
+  const items = onlyTargets ? allItems.filter(isTarget) : allItems;
   const n = items.length;
   const keywords = new Set(items.map((i) => i.keyword)).size;
   const cost =
+    (doAds ? keywords * PRICES.cityAdsRequest : 0) +
     (doKd ? keywords * PRICES.kdRequest + n * PRICES.kdKeyword : 0) +
     (serpMode === "queued" ? n * PRICES.serpQueued : serpMode === "live" ? n * PRICES.serp : 0) +
     (doLocal ? n * PRICES.local : 0);
   const minutes = doLocal && mode === "live" ? Math.ceil((n * LOCAL_INTERVAL_MS) / 60000) : serpMode === "queued" ? 5 : 1;
 
   const run = async () => {
-    if (!n || (!doKd && serpMode === "off" && !doLocal)) return;
+    if (!n || (!doAds && !doKd && serpMode === "off" && !doLocal)) return;
     stopRef.current = false;
     const store = getStore();
     const opts = { store, refresh, shouldStop: () => stopRef.current };
@@ -64,7 +73,19 @@ export default function AccurateRun({ items, mode, flash, onUpdated }: Props) {
       });
 
     try {
-      if (doKd) {
+      if (doAds) {
+        setProgress({ label: "City Google Ads data", done: 0, total: n });
+        for (const [keyword, group] of byKeyword) {
+          if (stopRef.current) break;
+          const r = await getCityAds(keyword, [...new Set(group.map((i) => i.cityId))], opts);
+          cachedHits += r.cached;
+          failures += Object.keys(r.errors).length;
+          await save(Object.entries(r.results).flatMap(([cityId, ads]) =>
+            ads ? apply(keyword, cityId, (i) => ({ ...i, row: refreshRow(i.row, { cityAds: ads }) })) : []));
+        }
+      }
+
+      if (doKd && !stopRef.current) {
         setProgress({ label: "City keyword difficulty", done: 0, total: n });
         for (const [keyword, group] of byKeyword) {
           if (stopRef.current) break;
@@ -155,6 +176,14 @@ export default function AccurateRun({ items, mode, flash, onUpdated }: Props) {
       {open && (
         <div className="absolute right-0 z-30 mt-1 w-96 space-y-2 rounded-md border border-zinc-200 bg-white p-3 text-sm shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
           <div className="font-semibold">Refresh {n} saved row{n === 1 ? "" : "s"} with DataForSEO</div>
+          <label className="flex items-start gap-2 rounded bg-emerald-50 p-2 dark:bg-emerald-900/30">
+            <input type="checkbox" className="mt-1" checked={onlyTargets} onChange={(e) => setOnlyTargets(e.target.checked)} />
+            <span>Only Target / Target? rows ({targetCount}) <span className="text-zinc-500">— spend only on cities that already look like high ads + low organic</span></span>
+          </label>
+          <label className="flex items-start gap-2">
+            <input type="checkbox" className="mt-1" checked={doAds} onChange={(e) => setDoAds(e.target.checked)} />
+            <span>City Google Ads data <span className="text-zinc-500">— city CPC, bids &amp; competition, ~$0.09 per keyword (up to 1,000 cities)</span></span>
+          </label>
           <label className="flex items-start gap-2">
             <input type="checkbox" className="mt-1" checked={doKd} onChange={(e) => setDoKd(e.target.checked)} />
             <span>City keyword difficulty <span className="text-zinc-500">— ~$0.0001/row (+$0.01 per keyword)</span></span>
@@ -184,7 +213,7 @@ export default function AccurateRun({ items, mode, flash, onUpdated }: Props) {
             Est. cost: <b>{mode === "demo" ? "$0 (demo data)" : `~$${cost.toFixed(3)}`}</b> · ~{minutes} min
             {!refresh && mode === "live" && <span className="block text-xs text-zinc-500">Cached results are free, so it may cost less.</span>}
           </div>
-          <button className="btn-primary w-full" disabled={!doKd && serpMode === "off" && !doLocal} onClick={() => {
+          <button className="btn-primary w-full" disabled={!n || (!doAds && !doKd && serpMode === "off" && !doLocal)} onClick={() => {
             if (mode === "live" && cost > 1 && !window.confirm(`This will cost up to about $${cost.toFixed(2)} in DataForSEO credits. Continue?`)) return;
             void run();
           }}>

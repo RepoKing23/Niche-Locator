@@ -272,3 +272,24 @@ export async function getSerpTask(taskId: string): Promise<SerpTaskState> {
     return { state: "error", message: err instanceof Error ? err.message : "SERP task fetch failed" };
   }
 }
+
+// ---- City-level Google Ads data for "<keyword> <city>" phrases (flat ~$0.09 per 1,000 phrases) ----
+
+/** Google Ads CPC, bids, competition and volume for city phrases; phrases without ads data map to null. */
+export async function fetchCityAds(keywords: string[]) {
+  const ads = new Map<string, KeywordMetrics | null>();
+  let cost = 0;
+  for (let i = 0; i < keywords.length; i += MAX_KD_KEYWORDS) {
+    const batch = keywords.slice(i, i + MAX_KD_KEYWORDS);
+    const r = await post<SearchVolumeItem>("/keywords_data/google_ads/search_volume/live", {
+      keywords: batch, location_code: US_LOCATION_CODE, language_code: "en",
+    });
+    cost += r.cost;
+    const byKeyword = new Map(parseSearchVolume(r.result).map((m) => [m.keyword.toLowerCase(), m]));
+    for (const k of batch) {
+      const m = byKeyword.get(k) ?? null;
+      ads.set(k, m && (m.cpc != null || m.competitionIndex != null || m.searchVolume != null) ? m : null);
+    }
+  }
+  return { ads, cost };
+}
