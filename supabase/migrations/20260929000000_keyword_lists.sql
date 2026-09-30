@@ -1,4 +1,5 @@
 -- Niche Locator: saved keyword lists and research reports, private per user (RLS).
+-- Safe to re-run: every object is created with IF NOT EXISTS or dropped first.
 
 create table if not exists public.keyword_lists (
   id uuid primary key default gen_random_uuid(),
@@ -43,11 +44,13 @@ alter table public.keyword_lists enable row level security;
 alter table public.list_items enable row level security;
 alter table public.reports enable row level security;
 
+drop policy if exists "Own lists" on public.keyword_lists;
 create policy "Own lists" on public.keyword_lists
   for all to authenticated
   using (user_id = (select auth.uid()))
   with check (user_id = (select auth.uid()));
 
+drop policy if exists "Own list items" on public.list_items;
 create policy "Own list items" on public.list_items
   for all to authenticated
   using (user_id = (select auth.uid()))
@@ -56,6 +59,7 @@ create policy "Own list items" on public.list_items
     and exists (select 1 from public.keyword_lists l where l.id = list_id and l.user_id = (select auth.uid()))
   );
 
+drop policy if exists "Own reports" on public.reports;
 create policy "Own reports" on public.reports
   for all to authenticated
   using (user_id = (select auth.uid()))
@@ -70,7 +74,9 @@ begin
 end;
 $$;
 
+drop trigger if exists keyword_lists_touch on public.keyword_lists;
 create trigger keyword_lists_touch before update on public.keyword_lists
   for each row execute function public.touch_updated_at();
+drop trigger if exists list_items_touch on public.list_items;
 create trigger list_items_touch before update on public.list_items
   for each row execute function public.touch_updated_at();

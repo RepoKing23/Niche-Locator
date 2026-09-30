@@ -31,8 +31,11 @@ describe("supabase migration", () => {
   beforeAll(async () => {
     db = new PGlite();
     await db.exec(AUTH_STUB);
-    for (const f of readdirSync("supabase/migrations").sort()) {
-      await db.exec(readFileSync(`supabase/migrations/${f}`, "utf8"));
+    // Run every migration twice: pasting a file into the SQL Editor again must not fail.
+    for (let pass = 0; pass < 2; pass++) {
+      for (const f of readdirSync("supabase/migrations").sort()) {
+        await db.exec(readFileSync(`supabase/migrations/${f}`, "utf8"));
+      }
     }
     await db.exec(`
       grant usage on schema public to authenticated;
