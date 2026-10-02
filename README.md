@@ -41,6 +41,11 @@ Ads Competition · Ads Index · Organic Difficulty · Organic Competition · Wea
 Map Pack · Map Pack Max Reviews · Ad Value / mo · 12-mo Trend · Google link. Hidden columns you can switch on
 under **Columns**: Ads on SERP, YoY %, Niche KD (US), Volume/CPC source, Top 10 domains.
 
+**Business Name / Domain Idea.** Each row gets a short, local-SEO name built from the city and service keyword, e.g.
+"Tampa Stair Lift Pros" or "Boise Plumbing Pros" (trade nouns become the trade: plumber → Plumbing). "Pros" is dropped when
+the name would go over 28 characters, e.g. "Colorado Springs Stair Lift". The Domain Idea is the matching .com
+(`tampastairliftpros.com`); check availability before buying.
+
 ### How cities are ranked: high Google Ads + low organic competition
 
 - **Ads Score (0–100)** = 50% CPC (log scale, $50 = max) + 30% Google Ads competition index + 20% paid ads actually seen

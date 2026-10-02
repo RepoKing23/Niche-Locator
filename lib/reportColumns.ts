@@ -1,3 +1,4 @@
+import { businessName, domainIdea } from "./businessName";
 import type { Cell } from "./export";
 import { organicSourceOf } from "./scoring";
 import type { CityRow } from "./types";
@@ -39,6 +40,12 @@ export const COLUMN_DEFS: ColumnDef[] = [
     value: (r) => r.organicEase ?? null },
   { key: "city", label: "City", defaultVisible: true, help: "City", value: (r) => r.city },
   { key: "stateCode", label: "State", defaultVisible: true, help: "State", value: (r) => r.stateCode },
+  { key: "businessName", label: "Business Name", defaultVisible: true,
+    help: "Suggested short, local-SEO name: city + service keyword (+ \"Pros\" when it stays under 28 characters).",
+    value: (r) => businessName(r.keyword, r.city) },
+  { key: "domain", label: "Domain Idea", defaultVisible: true,
+    help: "Matching exact-match .com idea for the business name (availability not checked).",
+    value: (r) => domainIdea(businessName(r.keyword, r.city)) },
   { key: "population", label: "Population", numeric: true, defaultVisible: true, numFmt: INT,
     help: "City population (2020 Census)", value: (r) => r.population },
   { key: "tier", label: "Market Size", defaultVisible: true,
