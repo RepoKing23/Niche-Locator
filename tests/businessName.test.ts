@@ -24,4 +24,10 @@ describe("business name generator", () => {
   it("makes a matching .com idea", () => {
     expect(domainIdea("St Louis Roofing Pros")).toBe("stlouisroofingpros.com");
   });
+
+  it("drops search-intent words", () => {
+    expect(businessName("curved stair lift cost", "Tampa")).toBe("Tampa Curved Stair Lift Pros");
+    expect(businessName("best plumber near me", "Boise")).toBe("Boise Plumbing Pros");
+    expect(businessName("how to build stairs", "Tampa")).toBe("Tampa Build Stairs Pros");
+  });
 });

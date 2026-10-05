@@ -10,6 +10,13 @@ const TRADES: Record<string, string> = {
   plasterer: "plastering", tiler: "tile", fencer: "fencing", paver: "paving", pavers: "paving",
 };
 
+/** Search-intent words that don't belong in a business name ("curved stair lift cost" → "Curved Stair Lift"). */
+const NOISE = new Set([
+  "how", "to", "what", "is", "a", "the", "for", "of", "in", "my", "do", "does", "can", "i", "diy",
+  "cost", "costs", "price", "prices", "pricing", "quote", "quotes", "estimate", "best", "top", "cheap",
+  "affordable", "near", "me", "local", "nearby", "vs", "average",
+]);
+
 const SUFFIX = "Pros";
 const MAX_LENGTH = 28;
 
@@ -22,7 +29,9 @@ const cleanCity = (city: string) => city.replace(/[^A-Za-z0-9\s-]/g, "").replace
 /** The service part of the name: "stair lift installer" → "Stair Lift", "plumber" → "Plumbing". */
 export function serviceWord(keyword: string): string {
   const core = coreTerm(keyword) || keyword;
-  const words = core.toLowerCase().split(/\s+/).filter(Boolean);
+  const all = core.toLowerCase().split(/\s+/).filter(Boolean);
+  const kept = all.filter((w) => !NOISE.has(w));
+  const words = kept.length ? kept : all;
   const last = words[words.length - 1];
   if (last && TRADES[last]) words[words.length - 1] = TRADES[last];
   return titleCase(words.join(" "));

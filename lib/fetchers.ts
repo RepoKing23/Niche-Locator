@@ -85,6 +85,45 @@ export async function getCityAds(
   return out;
 }
 
+// ---------- Keyword Check: pasted keywords in one city ----------
+
+export type KeywordCheckData = {
+  ads: Record<string, KeywordMetrics | null>;
+  kd: Record<string, number | null>;
+  cost: number;
+  cached: number;
+};
+
+/** City-targeted Google Ads data + keyword difficulty for pasted keywords (cache first). */
+export async function getKeywordCheck(keywords: string[], cityId: string, opts: FetchOptions): Promise<KeywordCheckData> {
+  // Cached under existing kinds with distinct keys: city-targeted ads → "local", keyword KD → "kd" (US-wide).
+  const adsKeys = new Map(keywords.map((k) => [k, `check:${k}|${cityId}`]));
+  const kdKeys = new Map(keywords.map((k) => [k, `${k}|us`]));
+  const [adsHits, kdHits] = await Promise.all([
+    fromCache<KeywordMetrics | null>(opts, "local", adsKeys),
+    fromCache<number | null>(opts, "kd", kdKeys),
+  ]);
+  const out: KeywordCheckData = {
+    ads: Object.fromEntries(adsHits), kd: Object.fromEntries(kdHits), cost: 0,
+    cached: [...adsHits.keys()].filter((k) => kdHits.has(k)).length,
+  };
+  const missing = keywords.filter((k) => !adsHits.has(k) || !kdHits.has(k));
+  for (const batch of chunk(missing, 1000)) {
+    if (opts.shouldStop?.()) break;
+    const r = await postJson<{ keywords: string[]; ads: Record<string, KeywordMetrics | null>; kd: Record<string, number | null>; cost: number }>(
+      "/api/keyword-check", { keywords: batch, cityId, withKd: batch.some((k) => !kdHits.has(k)) },
+    );
+    out.cost += r.cost;
+    for (const k of r.keywords) {
+      out.ads[k] = r.ads[k] ?? null;
+      if (k in r.kd || !kdHits.has(k)) out.kd[k] = r.kd[k] ?? null;
+    }
+    await toCache(opts, "local", r.keywords.map((k) => [adsKeys.get(k) ?? `check:${k}|${cityId}`, r.ads[k] ?? null]));
+    await toCache(opts, "kd", r.keywords.filter((k) => !kdHits.has(k)).map((k) => [kdKeys.get(k) ?? `${k}|us`, r.kd[k] ?? null]));
+  }
+  return out;
+}
+
 // ---------- Live SERP (fast, ~$0.002/city) ----------
 
 export async function getLiveSerps(

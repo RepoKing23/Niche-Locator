@@ -66,7 +66,9 @@ const RENDER: Record<string, (r: CityRow) => ReactNode> = {
       {r.volumeSource === "Estimated" && <span className="ml-1 text-xs text-zinc-400">est.</span>}
     </span>
   ),
-  cpc: (r) => (
+  cpc: (r) => !r.cpc && r.competitionIndex == null ? (
+    <span className="text-zinc-400" title="Google Ads has no CPC or competition data for this keyword here — likely no ads market">No ads</span>
+  ) : (
     <span>
       {money(r.cpc)}
       {r.cpcSource === "National" && <span className="ml-1 text-xs text-zinc-400" title="US average — no city ads data">US</span>}

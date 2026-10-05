@@ -333,3 +333,56 @@ export function accuracyLabel(row: CityRow): "Exact" | "SERP checked" | "KD chec
   if (source === "City KD") return "KD checked";
   return "Estimated";
 }
+
+/**
+ * Keyword Check row: one pasted keyword in one city. Ads data is Google Ads targeted to the city;
+ * organic difficulty comes from the live SERP when checked, otherwise the keyword's KD.
+ * No ads data means CPC 0 / no competition, so the Ads Score honestly shows "no ads market".
+ */
+export function buildKeywordRow(
+  city: City,
+  keyword: string,
+  ads: KeywordMetrics | null,
+  kd: number | null,
+  serp: SerpInfo | null,
+  status: CityRow["status"],
+): CityRow {
+  const searchVolume = ads?.searchVolume ?? 0;
+  const cpc = round2(ads?.cpc ?? 0);
+  const competitionIndex = ads?.competitionIndex ?? null;
+  const organicSource: OrganicSource | undefined = serp ? "Live SERP" : kd != null ? "City KD" : undefined;
+  const organicDifficulty = serp ? serp.difficulty : kd;
+  const trend = ads?.trend ?? [];
+  return withScores({
+    id: keyword,
+    city: city.name,
+    state: city.state,
+    stateCode: city.stateCode,
+    population: city.population,
+    tier: city.tier,
+    keyword,
+    searchVolume,
+    volumeSource: ads ? "Google Ads (city)" : "Estimated",
+    cpc,
+    cpcSource: ads?.cpc != null ? "City" : "National",
+    lowBid: ads?.lowBid ?? null,
+    highBid: ads?.highBid ?? null,
+    competition: competitionFromIndex(competitionIndex),
+    competitionIndex,
+    nicheDifficulty: kd,
+    organicDifficulty,
+    organicSource,
+    organic: organicLabel(organicDifficulty),
+    weakResults: serp?.weakResults ?? null,
+    cityRelevant: serp?.cityRelevant ?? null,
+    localPack: serp?.localPack ?? null,
+    localPackTopReviews: serp?.localPackTopReviews ?? null,
+    adsCount: serp?.adsCount ?? null,
+    topDomains: serp?.topDomains ?? [],
+    adValue: round2(searchVolume * cpc),
+    trend,
+    yoy: yoy(trend),
+    score: 0,
+    status,
+  });
+}

@@ -293,3 +293,32 @@ export async function fetchCityAds(keywords: string[]) {
   }
   return { ads, cost };
 }
+
+// ---- Keyword Check: pasted keywords, Google Ads data targeted to one city ----
+
+/** Google Ads accepts keywords up to 80 characters and 10 words. */
+export function validAdsKeyword(k: string): boolean {
+  return k.length >= 2 && k.length <= 80 && k.split(" ").length <= 10;
+}
+
+/**
+ * Google Ads volume, CPC, bids and competition for the keywords as searched *inside* the city
+ * (location-targeted). Flat ~$0.09 per request of up to 1,000 keywords. Missing = null.
+ */
+export async function fetchKeywordsInCity(keywords: string[], location: string) {
+  const ads = new Map<string, KeywordMetrics | null>();
+  let cost = 0;
+  for (let i = 0; i < keywords.length; i += MAX_KD_KEYWORDS) {
+    const batch = keywords.slice(i, i + MAX_KD_KEYWORDS);
+    const r = await post<SearchVolumeItem>("/keywords_data/google_ads/search_volume/live", {
+      keywords: batch, location_name: location, language_code: "en",
+    });
+    cost += r.cost;
+    const byKeyword = new Map(parseSearchVolume(r.result).map((m) => [m.keyword.toLowerCase(), m]));
+    for (const k of batch) {
+      const m = byKeyword.get(k) ?? null;
+      ads.set(k, m && (m.cpc != null || m.competitionIndex != null || m.searchVolume != null) ? m : null);
+    }
+  }
+  return { ads, cost };
+}

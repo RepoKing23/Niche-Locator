@@ -95,3 +95,16 @@ export function mockCityAds(keyword: string, city: City): KeywordMetrics | null 
   const base = 4 + rand(keyword.split(" ")[0]) * 22;
   return fakeMetrics(phrase, (city.population / 1_000_000) * 60, base * (0.5 + rand(`${phrase}|cpc`) * 1.2));
 }
+
+/** Fake location-targeted Google Ads data for a pasted keyword in a city (~20% without data). */
+export function mockKeywordInCity(keyword: string, city: City): KeywordMetrics | null {
+  if (rand(`${keyword}|${city.id}|kc`) < 0.2) return null;
+  const base = 3 + rand(keyword.split(" ")[0]) * 30;
+  return fakeMetrics(`${keyword}|${city.id}`, (city.population / 1_000_000) * 50, base * (0.5 + rand(`${keyword}|${city.id}|cpc`)));
+}
+
+/** Fake national keyword difficulty for a pasted keyword (~30% without data). */
+export function mockKeywordDifficulty(keyword: string): number | null {
+  const r = rand(`${keyword}|kdk`);
+  return r < 0.3 ? null : Math.round(r * 70);
+}

@@ -91,6 +91,24 @@ usually empty for city-level keywords, so the live SERP is the better signal.
 - Each finished report is saved (to Supabase when it's set up, otherwise in this browser); reopen it from **Saved reports** without paying again
 - Excel files are built in your browser, so big reports have no upload size limit
 
+## Keyword Check (paste keywords for one city)
+
+The **Keyword Check** tab answers: *for these keywords in this city, are ads strong, and is organic hard?*
+
+1. Paste keywords (one per line or comma-separated, up to 500). Duplicates and invalid ones (over 80 characters or
+   10 words) are skipped.
+2. Pick the **target city** (type to search, e.g. "Tampa, FL").
+3. Choose the organic check:
+   - **Live SERP check** (~$0.002/keyword): the real top 10 *in that city*, plus how many ads Google shows
+   - **Queued SERP check** (~$0.0006/keyword, 1–5 min)
+   - **Keyword difficulty only** (national Labs KD, cheapest)
+
+For every keyword you get Google Ads data **targeted to that city** (monthly searches, CPC, top-of-page bids, competition;
+~$0.09 per 1,000 keywords), plus organic difficulty, Ads Score, Organic Ease and Verdict, the same scores as Research.
+Keywords Google Ads has no data for show **No ads** (no ads market). Summary cards count strong-ads, no-ads, easy and hard
+keywords and Targets. Results use the same table (filters, High Ads / Low Organic, Copy / CSV / Excel), can be saved to a
+keyword list, and are cached for 30 days, so re-checking the same keywords in the same city is free.
+
 ## Keyword lists
 
 Tick rows on the Research tab and click **Save to list ▾**. Pick an existing list or type a name to create one.

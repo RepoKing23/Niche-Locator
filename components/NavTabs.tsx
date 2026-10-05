@@ -12,9 +12,11 @@ export default function NavTabs() {
     </Link>
   );
   const onLists = path.startsWith("/lists");
+  const onCheck = path.startsWith("/check");
   return (
     <nav className="flex gap-1">
-      {tab("/", "Research", !onLists)}
+      {tab("/", "Research", !onLists && !onCheck)}
+      {tab("/check", "Keyword Check", onCheck)}
       {tab("/lists", "Keyword Lists", onLists)}
     </nav>
   );
