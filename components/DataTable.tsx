@@ -13,6 +13,7 @@ type Filters = {
   minVolume: number | "";
   minCpc: number | "";
   minAdsIndex: number | "";
+  minAds: number | "";
   maxOrganic: number | "";
   minScore: number | "";
   minAdsScore: number | "";
@@ -22,7 +23,7 @@ type Filters = {
 };
 
 const EMPTY: Filters = {
-  search: "", states: [], tiers: [], minPopulation: "", minVolume: "", minCpc: "", minAdsIndex: "",
+  search: "", states: [], tiers: [], minPopulation: "", minVolume: "", minCpc: "", minAdsIndex: "", minAds: "",
   maxOrganic: "", minScore: "", minAdsScore: "", minEase: "", organic: [], verdicts: [],
 };
 
@@ -71,7 +72,7 @@ type Sort = { key: string; dir: "asc" | "desc" };
 const sessionViews = new Map<string, { visible: string[]; filters: Filters; sort: Sort }>();
 
 /** Columns added after column choices started being saved; shown once to people with saved choices. */
-const ADDED_LATER = ["areaCode"];
+const ADDED_LATER = ["areaCode", "adsCount"];
 const SEEN_KEY = (name: string) => `${COLUMNS_KEY(name)}:seen`;
 
 function loadVisible(name: string | undefined, fallback: string[], known: Set<string>): Set<string> {
@@ -148,6 +149,7 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
         if (f.minVolume !== "" && r.searchVolume < f.minVolume) return false;
         if (f.minCpc !== "" && r.cpc < f.minCpc) return false;
         if (f.minAdsIndex !== "" && (r.competitionIndex ?? 0) < f.minAdsIndex) return false;
+        if (f.minAds !== "" && (r.adsCount ?? -1) < f.minAds) return false;
         if (f.maxOrganic !== "" && (r.organicDifficulty == null || r.organicDifficulty > f.maxOrganic)) return false;
         if (f.minScore !== "" && r.score < f.minScore) return false;
         if (f.minAdsScore !== "" && (r.adsScore ?? 0) < f.minAdsScore) return false;
@@ -253,6 +255,7 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
           <NumField label="Min Organic Ease" value={filters.minEase} onChange={(v) => updateFilters({ ...filters, minEase: v })} />
           <NumField label="Min CPC $" value={filters.minCpc} onChange={(v) => updateFilters({ ...filters, minCpc: v })} />
           <NumField label="Min Ads Index" value={filters.minAdsIndex} onChange={(v) => updateFilters({ ...filters, minAdsIndex: v })} />
+          <NumField label="Min Ads on SERP" value={filters.minAds} onChange={(v) => updateFilters({ ...filters, minAds: v })} />
           <NumField label="Max Organic Diff." value={filters.maxOrganic} onChange={(v) => updateFilters({ ...filters, maxOrganic: v })} />
           <NumField label="Min Searches" value={filters.minVolume} onChange={(v) => updateFilters({ ...filters, minVolume: v })} />
           <NumField label="Min Population" value={filters.minPopulation} onChange={(v) => updateFilters({ ...filters, minPopulation: v })} />
@@ -412,6 +415,7 @@ function describeFilters(f: Filters): string[] {
   if (f.minVolume !== "") out.push(`Monthly searches ≥ ${f.minVolume}`);
   if (f.minCpc !== "") out.push(`CPC ≥ $${f.minCpc}`);
   if (f.minAdsIndex !== "") out.push(`Ads index ≥ ${f.minAdsIndex}`);
+  if (f.minAds !== "") out.push(`Ads on SERP ≥ ${f.minAds}`);
   if (f.maxOrganic !== "") out.push(`Organic difficulty ≤ ${f.maxOrganic}`);
   if (f.minScore !== "") out.push(`Opportunity score ≥ ${f.minScore}`);
   if (f.minAdsScore !== "") out.push(`Ads Score ≥ ${f.minAdsScore}`);

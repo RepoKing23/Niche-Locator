@@ -147,7 +147,15 @@ export type SerpItem = {
   url?: string;
   description?: string;
   rating?: { votes_count?: number | null } | null;
+  /** Sub-items, e.g. the individual Local Services Ads in a `local_services` block. */
+  items?: unknown[] | null;
 };
+
+/** Paid placements: text ads plus Local Services Ads ("Google Guaranteed"), common for trades. */
+export function countAds(items: SerpItem[]): number {
+  return items.reduce((n, i) =>
+    n + (i.type === "paid" ? 1 : i.type === "local_services" ? Math.max(1, i.items?.length ?? 0) : 0), 0);
+}
 
 export function parseSerp(keyword: string, location: string, cityName: string, items: SerpItem[]): SerpInfo {
   const organic = items.filter((i) => i.type === "organic" && i.domain).slice(0, 10);
@@ -171,7 +179,7 @@ export function parseSerp(keyword: string, location: string, cityName: string, i
     cityRelevant: strongLocal.length,
     localPack: pack.length > 0,
     localPackTopReviews,
-    adsCount: items.filter((i) => i.type === "paid").length,
+    adsCount: countAds(items),
     topDomains: organic.map((i) => normalizeDomain(i.domain!)),
     difficulty: serpDifficulty({
       organicCount: organic.length,
