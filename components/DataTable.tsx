@@ -56,15 +56,51 @@ type Props = {
   searchText?: (r: CityRow) => string;
   /** Page-specific buttons (save to list, full report, remove…). */
   actions?: (ctx: ActionContext) => ReactNode;
+  /** Remembers which columns are shown (per browser) under this name, e.g. "research". */
+  storageKey?: string;
 };
 
-export default function DataTable({ rows, exportName, extraColumns = [], searchText, actions }: Props) {
+const COLUMNS_KEY = (name: string) => `niche-locator:columns:${name}`;
+
+function loadVisible(name: string | undefined, fallback: string[], known: Set<string>): Set<string> {
+  if (!name) return new Set(fallback);
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMNS_KEY(name)) ?? "null") as string[] | null;
+    if (Array.isArray(saved)) return new Set(saved.filter((k) => known.has(k)));
+  } catch {
+    // per-browser convenience only
+  }
+  return new Set(fallback);
+}
+
+export default function DataTable({ rows, exportName, extraColumns = [], searchText, actions, storageKey }: Props) {
   const allColumns = useMemo(() => [...extraColumns, ...COLUMNS], [extraColumns]);
+  const defaultVisible = useMemo(() => allColumns.filter((c) => c.defaultVisible).map((c) => c.key), [allColumns]);
   const [filters, setFilters] = useState<Filters>(EMPTY);
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "score", dir: "desc" });
-  const [visible, setVisible] = useState<Set<string>>(
-    () => new Set([...extraColumns, ...COLUMNS].filter((c) => c.defaultVisible).map((c) => c.key)),
-  );
+  const [visible, setVisibleState] = useState<Set<string>>(() => {
+    const all = [...extraColumns, ...COLUMNS];
+    return loadVisible(storageKey, all.filter((c) => c.defaultVisible).map((c) => c.key), new Set(all.map((c) => c.key)));
+  });
+  /** Update shown columns and remember the choice for next time. */
+  const setVisible = (next: Set<string> | ((v: Set<string>) => Set<string>)) => {
+    setVisibleState((prev) => {
+      const value = typeof next === "function" ? next(prev) : next;
+      if (storageKey) {
+        try {
+          localStorage.setItem(COLUMNS_KEY(storageKey), JSON.stringify([...value]));
+        } catch {
+          // per-browser convenience only
+        }
+      }
+      return value;
+    });
+  };
+  const hideColumn = (key: string) => setVisible((v) => {
+    const n = new Set(v);
+    n.delete(key);
+    return n;
+  });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scopePref, setScopePref] = useState<"selected" | "all">("selected");
   const [page, setPage] = useState(0);
@@ -124,11 +160,13 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
     data: target.map((r) => columns.map((c) => c.value(r))),
   });
 
-  const copy = async () => {
+  const copy = async (withHeaders = true) => {
     const { headers, data } = exportData();
+    if (!headers.length) return flash("All columns are hidden — show at least one column under Columns ▾.");
     try {
-      await navigator.clipboard.writeText(toTsv(headers, data));
-      flash(`Copied ${data.length} rows — paste into Google Sheets or Excel.`);
+      const tsv = toTsv(headers, data);
+      await navigator.clipboard.writeText(withHeaders ? tsv : tsv.split("\n").slice(1).join("\n"));
+      flash(`Copied ${data.length} rows × ${headers.length} column${headers.length === 1 ? "" : "s"}${withHeaders ? "" : " (values only)"} — paste into Google Sheets or Excel.`);
     } catch {
       flash("Clipboard blocked by the browser. Use Export CSV instead.");
     }
@@ -248,13 +286,27 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
         </div>
         <div className="ml-auto flex flex-wrap gap-2">
           {actions?.({ target, scope, selected: selectedRows, filtered, filters: filterList, flash, clearSelection: () => setSelected(new Set()) })}
-          <button className="btn" onClick={copy}>Copy</button>
+          <button className="btn" onClick={() => copy(true)} title="Copy the visible columns (with header row)">Copy</button>
+          <button className="btn" onClick={() => copy(false)} title="Copy only the cell values of the visible columns, no header row">
+            Copy values only
+          </button>
           <button className="btn" onClick={exportCsv}>Export CSV</button>
           <button className="btn" onClick={exportXlsx}>Export table (Excel)</button>
           <div className="relative">
-            <button className="btn" onClick={() => setShowColumns((v) => !v)}>Columns ▾</button>
+            <button className="btn" onClick={() => setShowColumns((v) => !v)}
+              title="Choose which columns to show — Copy and exports include only the shown columns">
+              Columns ({columns.length}/{allColumns.length}) ▾
+            </button>
             {showColumns && (
-              <div className="absolute right-0 z-20 mt-1 max-h-80 w-56 overflow-auto rounded-md border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+              <div className="absolute right-0 z-20 mt-1 w-64 rounded-md border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+                <p className="mb-2 text-xs text-zinc-500">Copy, CSV and Excel include only the ticked columns, in this order.</p>
+                <div className="mb-2 flex flex-wrap gap-1">
+                  <button className="btn px-2 py-0.5 text-xs" onClick={() => setVisible(new Set(allColumns.map((c) => c.key)))}>Show all</button>
+                  <button className="btn px-2 py-0.5 text-xs" onClick={() => setVisible(new Set())}>Hide all</button>
+                  <button className="btn px-2 py-0.5 text-xs" onClick={() => setVisible(new Set(defaultVisible))}>Default columns</button>
+                  <button className="btn ml-auto px-2 py-0.5 text-xs" onClick={() => setShowColumns(false)}>Done</button>
+                </div>
+                <div className="max-h-72 overflow-auto">
                 {allColumns.map((c) => (
                   <label key={c.key} className="flex items-center gap-2 py-0.5 text-sm">
                     <input type="checkbox" checked={visible.has(c.key)}
@@ -267,6 +319,7 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
                     {c.label}
                   </label>
                 ))}
+                </div>
               </div>
             )}
           </div>
@@ -285,8 +338,13 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
               </th>
               {columns.map((c) => (
                 <th key={c.key} title={c.help} onClick={() => toggleSort(c)}
-                  className={`cursor-pointer select-none whitespace-nowrap px-2 py-2 font-semibold ${c.numeric ? "text-right" : "text-left"}`}>
+                  className={`group cursor-pointer select-none whitespace-nowrap px-2 py-2 font-semibold ${c.numeric ? "text-right" : "text-left"}`}>
                   {c.label}{sort.key === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}
+                  <button type="button" aria-label={`Hide ${c.label} column`} title={`Hide “${c.label}” (bring it back under Columns ▾)`}
+                    onClick={(e) => { e.stopPropagation(); hideColumn(c.key); }}
+                    className="ml-1 rounded px-1 text-xs font-normal text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-700 group-hover:opacity-100 focus:opacity-100 dark:hover:bg-zinc-700 dark:hover:text-zinc-200">
+                    ✕
+                  </button>
                 </th>
               ))}
             </tr>

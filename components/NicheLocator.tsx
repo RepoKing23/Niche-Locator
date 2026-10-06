@@ -494,6 +494,7 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
           <SnapshotPanel snapshot={report.snapshot} mode={report.mode} spent={report.spent} />
           <DataTable
             key={report.id}
+            storageKey="research"
             rows={rows}
             exportName={`${report.niche} niche report`}
             actions={(ctx) => (

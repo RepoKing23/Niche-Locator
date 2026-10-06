@@ -204,7 +204,8 @@ export default function ListsManager({ mode, active: visible = true }: { mode: "
             </div>
             <DataTable
               key={active.id}
-              rows={rows}
+              storageKey="lists"
+            rows={rows}
               exportName={`${active.name} keyword list`}
               extraColumns={extraColumns}
               searchText={searchText}

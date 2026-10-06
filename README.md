@@ -86,6 +86,10 @@ usually empty for city-level keywords, so the live SERP is the better signal.
   - **All Cities**: every city and every column, sorted by score, with color-coded score/competition, $ formats, frozen header, autofilter, column tooltips and clickable Google links
   - **Keyword Variants**: national data for each variant with 12 monthly values
   - **SERP Details**: per city, the weak domains, local competitors, map pack, ads and the top 10 domains
+- **Choose your columns:** hover a column header and click **✕** to hide it, or use **Columns (shown/total) ▾**
+  (Show all, Hide all, Default columns, tick boxes). Copy, Copy values only, CSV and Excel table exports include
+  only the shown columns. Your choice is remembered per tab (Research, Keyword Check, Keyword Lists) in this browser.
+- **Copy values only** copies just the cell values (no header row), handy for pasting into an existing sheet
 - **Copy** puts tab-separated rows on the clipboard, so they paste into Sheets/Excel as columns. **Export CSV** and **Export table (Excel)** download only the table.
 - Table exports include only the visible columns and follow your current filters and sort
 - Each finished report is saved (to Supabase when it's set up, otherwise in this browser); reopen it from **Saved reports** without paying again

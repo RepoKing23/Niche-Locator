@@ -213,6 +213,7 @@ export default function KeywordChecker({ mode }: { mode: "live" | "demo" }) {
           )}
           <DataTable
             key={`${result.city.id}:${result.keywords.length}:${result.keywords[0]}`}
+            storageKey="check"
             rows={rows}
             exportName={`keyword check ${cityLabel(result.city)}`}
             actions={(ctx) => (
