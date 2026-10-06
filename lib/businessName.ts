@@ -1,4 +1,5 @@
 import { coreTerm } from "./keywords";
+import { stripPlace } from "./location";
 
 /** Trade nouns read better as the trade itself: "Tampa Plumbing Pros", not "Tampa Plumber Pros". */
 const TRADES: Record<string, string> = {
@@ -42,8 +43,10 @@ export function serviceWord(keyword: string): string {
  * City + service keyword in the name helps Google Business Profile and exact-match local searches;
  * the suffix is dropped when the name would get too long (> 28 characters).
  */
-export function businessName(keyword: string, city: string): string {
-  const base = `${cleanCity(city)} ${serviceWord(keyword)}`.trim();
+export function businessName(keyword: string, city: string, stateCode = "", stateName = ""): string {
+  // Keywords that already name the place ("stair lift cost missoula mt") shouldn't repeat it.
+  const service = serviceWord(stripPlace(keyword, city, stateCode, stateName) || keyword);
+  const base = `${cleanCity(city)} ${service}`.trim();
   const withSuffix = `${base} ${SUFFIX}`;
   return withSuffix.length <= MAX_LENGTH ? withSuffix : base;
 }

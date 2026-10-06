@@ -1,4 +1,5 @@
 import { businessName, domainIdea } from "./businessName";
+import { googleQuery } from "./location";
 import type { Cell } from "./export";
 import { organicSourceOf } from "./scoring";
 import type { CityRow } from "./types";
@@ -22,7 +23,7 @@ const USD0 = "$#,##0";
 const INT = "#,##0";
 
 export function googleUrl(r: CityRow) {
-  return `https://www.google.com/search?q=${encodeURIComponent(`${r.keyword} ${r.city} ${r.stateCode}`)}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(googleQuery(r.keyword, r.city, r.stateCode, r.state))}`;
 }
 
 export const COLUMN_DEFS: ColumnDef[] = [
@@ -42,10 +43,10 @@ export const COLUMN_DEFS: ColumnDef[] = [
   { key: "stateCode", label: "State", defaultVisible: true, help: "State", value: (r) => r.stateCode },
   { key: "businessName", label: "Business Name", defaultVisible: true,
     help: "Suggested short, local-SEO name: city + service keyword (+ \"Pros\" when it stays under 28 characters).",
-    value: (r) => businessName(r.keyword, r.city) },
+    value: (r) => businessName(r.keyword, r.city, r.stateCode, r.state) },
   { key: "domain", label: "Domain Idea", defaultVisible: true,
     help: "Matching exact-match .com idea for the business name (availability not checked).",
-    value: (r) => domainIdea(businessName(r.keyword, r.city)) },
+    value: (r) => domainIdea(businessName(r.keyword, r.city, r.stateCode, r.state)) },
   { key: "population", label: "Population", numeric: true, defaultVisible: true, numFmt: INT,
     help: "City population (2020 Census)", value: (r) => r.population },
   { key: "tier", label: "Market Size", defaultVisible: true,
