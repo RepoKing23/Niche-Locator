@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { COLUMNS, type Column } from "./columns";
 import { downloadBlob, slugify, toCsv, toTsv, type Cell } from "@/lib/export";
 import type { CityRow, OrganicLabel, Verdict } from "@/lib/types";
@@ -62,8 +62,18 @@ type Props = {
 
 const COLUMNS_KEY = (name: string) => `niche-locator:columns:${name}`;
 
+type Sort = { key: string; dir: "asc" | "desc" };
+
+/**
+ * View settings per table (storageKey) kept for the whole session, so a new run / new keywords /
+ * another list keep your hidden columns, filters and sort — even if browser storage is blocked.
+ */
+const sessionViews = new Map<string, { visible: string[]; filters: Filters; sort: Sort }>();
+
 function loadVisible(name: string | undefined, fallback: string[], known: Set<string>): Set<string> {
   if (!name) return new Set(fallback);
+  const mem = sessionViews.get(name);
+  if (mem) return new Set(mem.visible.filter((k) => known.has(k)));
   try {
     const saved = JSON.parse(localStorage.getItem(COLUMNS_KEY(name)) ?? "null") as string[] | null;
     if (Array.isArray(saved)) return new Set(saved.filter((k) => known.has(k)));
@@ -76,8 +86,8 @@ function loadVisible(name: string | undefined, fallback: string[], known: Set<st
 export default function DataTable({ rows, exportName, extraColumns = [], searchText, actions, storageKey }: Props) {
   const allColumns = useMemo(() => [...extraColumns, ...COLUMNS], [extraColumns]);
   const defaultVisible = useMemo(() => allColumns.filter((c) => c.defaultVisible).map((c) => c.key), [allColumns]);
-  const [filters, setFilters] = useState<Filters>(EMPTY);
-  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "score", dir: "desc" });
+  const [filters, setFilters] = useState<Filters>(() => (storageKey && sessionViews.get(storageKey)?.filters) || EMPTY);
+  const [sort, setSort] = useState<Sort>(() => (storageKey && sessionViews.get(storageKey)?.sort) || { key: "score", dir: "desc" });
   const [visible, setVisibleState] = useState<Set<string>>(() => {
     const all = [...extraColumns, ...COLUMNS];
     return loadVisible(storageKey, all.filter((c) => c.defaultVisible).map((c) => c.key), new Set(all.map((c) => c.key)));
@@ -96,6 +106,11 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
       return value;
     });
   };
+  // Remember this table's view for the session (survives new results, which rebuild the table).
+  useEffect(() => {
+    if (storageKey) sessionViews.set(storageKey, { visible: [...visible], filters, sort });
+  }, [storageKey, visible, filters, sort]);
+
   const hideColumn = (key: string) => setVisible((v) => {
     const n = new Set(v);
     n.delete(key);
