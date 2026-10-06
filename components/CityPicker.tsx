@@ -12,6 +12,12 @@ type Props = {
 
 const TIERS: Tier[] = ["Major", "Mid", "Small"];
 
+const POP_PRESETS = [10000, 25000, 50000, 100000, 150000, 250000, 500000, 1000000];
+const RANGES: [string, number, number][] = [
+  ["Any", 0, 0], ["10k–50k", 10000, 50000], ["25k–150k", 25000, 150000], ["50k–250k", 50000, 250000], ["250k+", 250000, 0],
+];
+const k = (n: number) => (n >= 1e6 ? `${n / 1e6}M` : `${n / 1000}k`);
+
 const byState = (() => {
   const m = new Map<string, City[]>();
   for (const c of CITIES) {
@@ -26,9 +32,14 @@ export default function CityPicker({ selected, onChange, footer }: Props) {
   const [search, setSearch] = useState("");
   const [states, setStates] = useState<string[]>([]);
   const [tiers, setTiers] = useState<Tier[]>([]);
+  // 0 = no limit.
   const [minPop, setMinPop] = useState(0);
+  const [maxPop, setMaxPop] = useState(0);
   const [topN, setTopN] = useState(10);
   const [open, setOpen] = useState<Set<string>>(new Set());
+
+  const inRange = (c: City) => c.population >= minPop && (!maxPop || c.population <= maxPop);
+  const badRange = maxPop > 0 && minPop > maxPop;
 
   /** Cities matching the picker's own filters (what "select all shown" acts on). */
   const shown = useMemo(() => {
@@ -36,10 +47,10 @@ export default function CityPicker({ selected, onChange, footer }: Props) {
     return CITIES.filter((c) =>
       (!states.length || states.includes(c.stateCode)) &&
       (!tiers.length || tiers.includes(c.tier)) &&
-      c.population >= minPop &&
+      c.population >= minPop && (!maxPop || c.population <= maxPop) &&
       (!q || c.name.toLowerCase().includes(q)),
     );
-  }, [search, states, tiers, minPop]);
+  }, [search, states, tiers, minPop, maxPop]);
 
   const shownByState = useMemo(() => {
     const m = new Map<string, City[]>();
@@ -60,7 +71,7 @@ export default function CityPicker({ selected, onChange, footer }: Props) {
     add(
       [...byState.entries()]
         .filter(([s]) => !states.length || states.includes(s))
-        .flatMap(([, list]) => list.filter((c) => (!tiers.length || tiers.includes(c.tier)) && c.population >= minPop).slice(0, topN)),
+        .flatMap(([, list]) => list.filter((c) => (!tiers.length || tiers.includes(c.tier)) && inRange(c)).slice(0, topN)),
     );
 
   const selectedCount = selected.size;
@@ -89,12 +100,17 @@ export default function CityPicker({ selected, onChange, footer }: Props) {
         </label>
         <label className="flex flex-col gap-1 text-xs text-zinc-600 dark:text-zinc-400">
           Min population
-          <select className="input w-28" value={minPop} onChange={(e) => setMinPop(Number(e.target.value))}>
-            {[0, 10000, 25000, 50000, 100000, 250000].map((p) => (
-              <option key={p} value={p}>{p ? `${p.toLocaleString()}+` : "Any"}</option>
-            ))}
-          </select>
+          <input type="number" min={0} step={1000} className="input w-28" list="pop-presets" placeholder="No min"
+            value={minPop || ""} onChange={(e) => setMinPop(Math.max(0, Number(e.target.value) || 0))} />
         </label>
+        <label className="flex flex-col gap-1 text-xs text-zinc-600 dark:text-zinc-400">
+          Max population
+          <input type="number" min={0} step={1000} className="input w-28" list="pop-presets" placeholder="No max"
+            value={maxPop || ""} onChange={(e) => setMaxPop(Math.max(0, Number(e.target.value) || 0))} />
+        </label>
+        <datalist id="pop-presets">
+          {POP_PRESETS.map((p) => <option key={p} value={p}>{k(p)}</option>)}
+        </datalist>
         <div className="flex flex-col gap-1 text-xs text-zinc-600 dark:text-zinc-400">
           Market size
           <div className="flex gap-1">
@@ -108,6 +124,16 @@ export default function CityPicker({ selected, onChange, footer }: Props) {
             ))}
           </div>
         </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-1 text-xs text-zinc-600 dark:text-zinc-400">
+        Population:
+        {RANGES.map(([label, lo, hi]) => (
+          <button key={label} type="button" onClick={() => { setMinPop(lo); setMaxPop(hi); }}
+            className={`rounded px-2 py-1 ${minPop === lo && maxPop === hi ? "bg-sky-600 text-white" : "bg-zinc-100 dark:bg-zinc-800"}`}>
+            {label}
+          </button>
+        ))}
+        {badRange && <span className="text-rose-600">Min is above max — no cities match.</span>}
       </div>
       {states.length > 0 && (
         <div className="flex flex-wrap gap-1">
@@ -128,6 +154,12 @@ export default function CityPicker({ selected, onChange, footer }: Props) {
         </span>
         <button type="button" className="btn" onClick={() => add(shown)}>Select all shown ({shown.length.toLocaleString()})</button>
         <button type="button" className="btn" onClick={() => remove(shown)}>Unselect shown</button>
+        {(minPop > 0 || maxPop > 0) && (
+          <button type="button" className="btn" title="Unselect selected cities outside the population range"
+            onClick={() => set(CITIES.filter((c) => selected.has(c.id) && inRange(c)).map((c) => c.id))}>
+            Keep only in range
+          </button>
+        )}
         <button type="button" className="btn" onClick={() => set([])}>Clear</button>
       </div>
 
@@ -169,6 +201,9 @@ export default function CityPicker({ selected, onChange, footer }: Props) {
         <span>
           <b>{selectedCount.toLocaleString()}</b> cities selected in {selectedStates.size} states
           <span className="text-zinc-500"> · {CITIES.length.toLocaleString()} available</span>
+          {(minPop > 0 || maxPop > 0) && (
+            <span className="text-zinc-500"> · population {minPop.toLocaleString()}–{maxPop ? maxPop.toLocaleString() : "any"}</span>
+          )}
         </span>
         {footer}
       </div>
