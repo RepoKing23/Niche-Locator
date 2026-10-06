@@ -186,7 +186,9 @@ export default function CityPicker({ selected, onChange, footer }: Props) {
                       <input type="checkbox" checked={selected.has(c.id)}
                         onChange={() => (selected.has(c.id) ? remove([c]) : add([c]))} />
                       <span className="truncate">{c.name}</span>
-                      <span className="ml-auto text-xs tabular-nums text-zinc-500">{c.population.toLocaleString()}</span>
+                      <span className="ml-auto text-xs tabular-nums text-zinc-500">
+                        {c.population.toLocaleString()}{c.areaCode && <span className="ml-2 text-zinc-400" title="Area code">☎ {c.areaCode}</span>}
+                      </span>
                     </label>
                   ))}
                 </div>

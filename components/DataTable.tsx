@@ -70,13 +70,22 @@ type Sort = { key: string; dir: "asc" | "desc" };
  */
 const sessionViews = new Map<string, { visible: string[]; filters: Filters; sort: Sort }>();
 
+/** Columns added after column choices started being saved; shown once to people with saved choices. */
+const ADDED_LATER = ["areaCode"];
+const SEEN_KEY = (name: string) => `${COLUMNS_KEY(name)}:seen`;
+
 function loadVisible(name: string | undefined, fallback: string[], known: Set<string>): Set<string> {
   if (!name) return new Set(fallback);
   const mem = sessionViews.get(name);
   if (mem) return new Set(mem.visible.filter((k) => known.has(k)));
   try {
     const saved = JSON.parse(localStorage.getItem(COLUMNS_KEY(name)) ?? "null") as string[] | null;
-    if (Array.isArray(saved)) return new Set(saved.filter((k) => known.has(k)));
+    if (Array.isArray(saved)) {
+      // Default columns that didn't exist when the choice was saved start visible.
+      const seenRaw = JSON.parse(localStorage.getItem(SEEN_KEY(name)) ?? "null") as string[] | null;
+      const seen = new Set(seenRaw ?? [...known].filter((k) => !ADDED_LATER.includes(k)));
+      return new Set([...saved, ...fallback.filter((k) => !seen.has(k))].filter((k) => known.has(k)));
+    }
   } catch {
     // per-browser convenience only
   }
@@ -99,6 +108,7 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
       if (storageKey) {
         try {
           localStorage.setItem(COLUMNS_KEY(storageKey), JSON.stringify([...value]));
+          localStorage.setItem(SEEN_KEY(storageKey), JSON.stringify(allColumns.map((c) => c.key)));
         } catch {
           // per-browser convenience only
         }

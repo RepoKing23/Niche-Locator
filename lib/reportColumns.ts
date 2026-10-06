@@ -1,5 +1,6 @@
 import { businessName, domainIdea } from "./businessName";
 import { googleQuery } from "./location";
+import { areaCodeFor } from "./cities";
 import type { Cell } from "./export";
 import { organicSourceOf } from "./scoring";
 import type { CityRow } from "./types";
@@ -41,6 +42,8 @@ export const COLUMN_DEFS: ColumnDef[] = [
     value: (r) => r.organicEase ?? null },
   { key: "city", label: "City", defaultVisible: true, help: "City", value: (r) => r.city },
   { key: "stateCode", label: "State", defaultVisible: true, help: "State", value: (r) => r.stateCode },
+  { key: "areaCode", label: "Area code", defaultVisible: true,
+    help: "Local phone area code(s) — for local call-tracking numbers", value: (r) => areaCodeFor(r.city, r.stateCode) || null },
   { key: "businessName", label: "Business Name", defaultVisible: true,
     help: "Suggested short, local-SEO name: city + service keyword (+ \"Pros\" when it stays under 28 characters).",
     value: (r) => businessName(r.keyword, r.city, r.stateCode, r.state) },
