@@ -39,7 +39,7 @@ numbers only for the cities you're interested in.
 Opportunity score · Verdict · Ads Score · Organic Ease · City · State · Population · Market Size · Keyword · Monthly Searches · CPC · Bid Low / High ·
 Ads Competition · Ads Index · Organic Difficulty · Organic Competition · Weak in Top 10 · Local Competitors ·
 Map Pack · Map Pack Max Reviews · Ad Value / mo · 12-mo Trend · Google link. Hidden columns you can switch on
-under **Columns**: Ads on SERP, YoY %, Niche KD (US), Volume/CPC source, Top 10 domains.
+under **Columns**: YoY %, Niche KD (US), Volume/CPC source, Top 10 domains.
 
 **Business Name / Domain Idea.** Each row gets a short, local-SEO name built from the city and service keyword, e.g.
 "Tampa Stair Lift Pros" or "Boise Plumbing Pros" (trade nouns become the trade: plumber → Plumbing). "Pros" is dropped when

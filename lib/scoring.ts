@@ -131,10 +131,10 @@ export const TARGET_EASE = 60;
 export function adsScore(input: { cpc: number; competitionIndex: number | null; adsCount: number | null }): number {
   const cpcPart = clamp01(Math.log1p(input.cpc) / Math.log1p(50));
   const compPart = clamp01((input.competitionIndex ?? 0) / 100);
-  if (input.adsCount == null) return Math.round(100 * (0.625 * cpcPart + 0.375 * compPart));
-  // The live SERP check found no ads in this city: Keyword Planner bidding alone isn't proof of an ads market.
-  if (input.adsCount === 0) return Math.round(100 * 0.6 * (0.625 * cpcPart + 0.375 * compPart));
-  return Math.round(100 * (0.5 * cpcPart + 0.3 * compPart + 0.2 * clamp01(input.adsCount / 3)));
+  const base = 0.625 * cpcPart + 0.375 * compPart;
+  // Google often hides ads from automated SERP checks, so 0 seen proves nothing; ads seen can only add.
+  if (!input.adsCount) return Math.round(100 * base);
+  return Math.round(100 * Math.max(base, 0.5 * cpcPart + 0.3 * compPart + 0.2 * clamp01(input.adsCount / 3)));
 }
 
 /**

@@ -255,7 +255,7 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
           <NumField label="Min Organic Ease" value={filters.minEase} onChange={(v) => updateFilters({ ...filters, minEase: v })} />
           <NumField label="Min CPC $" value={filters.minCpc} onChange={(v) => updateFilters({ ...filters, minCpc: v })} />
           <NumField label="Min Ads Index" value={filters.minAdsIndex} onChange={(v) => updateFilters({ ...filters, minAdsIndex: v })} />
-          <NumField label="Min Ads on SERP" value={filters.minAds} onChange={(v) => updateFilters({ ...filters, minAds: v })} />
+          <NumField label="Min ads seen" value={filters.minAds} onChange={(v) => updateFilters({ ...filters, minAds: v })} />
           <NumField label="Max Organic Diff." value={filters.maxOrganic} onChange={(v) => updateFilters({ ...filters, maxOrganic: v })} />
           <NumField label="Min Searches" value={filters.minVolume} onChange={(v) => updateFilters({ ...filters, minVolume: v })} />
           <NumField label="Min Population" value={filters.minPopulation} onChange={(v) => updateFilters({ ...filters, minPopulation: v })} />
@@ -415,7 +415,7 @@ function describeFilters(f: Filters): string[] {
   if (f.minVolume !== "") out.push(`Monthly searches ≥ ${f.minVolume}`);
   if (f.minCpc !== "") out.push(`CPC ≥ $${f.minCpc}`);
   if (f.minAdsIndex !== "") out.push(`Ads index ≥ ${f.minAdsIndex}`);
-  if (f.minAds !== "") out.push(`Ads on SERP ≥ ${f.minAds}`);
+  if (f.minAds !== "") out.push(`Ads seen ≥ ${f.minAds}`);
   if (f.maxOrganic !== "") out.push(`Organic difficulty ≤ ${f.maxOrganic}`);
   if (f.minScore !== "") out.push(`Opportunity score ≥ ${f.minScore}`);
   if (f.minAdsScore !== "") out.push(`Ads Score ≥ ${f.minAdsScore}`);

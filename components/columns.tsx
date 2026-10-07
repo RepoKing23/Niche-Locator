@@ -105,8 +105,9 @@ const RENDER: Record<string, (r: CityRow) => ReactNode> = {
   localPackTopReviews: (r) => int(r.localPackTopReviews),
   adsCount: (r) => r.adsCount == null
     ? <span className="text-zinc-400" title="Not checked — run a SERP check to see ads shown in this city">—</span>
-    : <span className={r.adsCount === 0 ? "text-rose-600" : "font-medium text-emerald-700 dark:text-emerald-400"}
-      title={r.adsCount === 0 ? "No ads shown to searchers in this city" : "Ads shown to searchers in this city"}>{r.adsCount}</span>,
+    : r.adsCount === 0
+      ? <span className="text-xs text-zinc-400" title="DataForSEO's check saw no ads. Google often hides ads from automated searches, so this does NOT mean no one advertises — use CPC, bids and Ads Comp. for the ads market.">none seen</span>
+      : <span className="font-medium text-emerald-700 dark:text-emerald-400" title="Ads confirmed running for searchers in this city">{r.adsCount}</span>,
   adValue: (r) => `$${Math.round(r.adValue).toLocaleString("en-US")}`,
   trend: (r) => <Sparkline values={r.trend} />,
   yoy: (r) => (r.yoy == null ? "—" : `${r.yoy > 0 ? "+" : ""}${r.yoy}%`),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { countAds, parseSerp, type SerpItem } from "@/lib/dataforseo";
-import { TARGET_ADS, adsScore, verdictFor } from "@/lib/scoring";
+import { adsScore, verdictFor } from "@/lib/scoring";
 
 describe("ads on the SERP", () => {
   it("counts text ads and Local Services Ads", () => {
@@ -15,11 +15,17 @@ describe("ads on the SERP", () => {
     expect(countAds([{ type: "local_services" }])).toBe(1);
   });
 
-  it("cuts the Ads Score when a SERP check found no ads", () => {
+  it("ignores 0 ads seen (real 'plumber tampa' SERP check saw none despite a $44.64 CPC)", () => {
     const planner = adsScore({ cpc: 44.64, competitionIndex: 73, adsCount: null });
     const none = adsScore({ cpc: 44.64, competitionIndex: 73, adsCount: 0 });
-    expect(planner).toBeGreaterThanOrEqual(TARGET_ADS);
-    expect(Math.abs(none - planner * 0.6)).toBeLessThanOrEqual(1);
-    expect(verdictFor(none, 90, "Live SERP")).not.toBe("Target");
+    expect(none).toBe(planner);
+    expect(verdictFor(none, 90, "Live SERP")).toBe("Target");
+  });
+
+  it("lets ads seen only raise the score", () => {
+    const low = { cpc: 3, competitionIndex: 30 };
+    expect(adsScore({ ...low, adsCount: 3 })).toBeGreaterThan(adsScore({ ...low, adsCount: null }));
+    const high = { cpc: 44.64, competitionIndex: 73 };
+    expect(adsScore({ ...high, adsCount: 1 })).toBeGreaterThanOrEqual(adsScore({ ...high, adsCount: null }));
   });
 });

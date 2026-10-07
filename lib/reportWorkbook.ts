@@ -198,7 +198,7 @@ function addSerpDetails(wb: ExcelJS.Workbook, pairs: { row: CityRow; serp: SerpI
   const ws = wb.addWorksheet("SERP Details");
   const header = ws.addRow([
     "City", "State", "Keyword", "Organic Results", "Weak in Top 10", "Weak Domains", "Local Competitors",
-    "Map Pack", "Map Pack Max Reviews", "Ads on SERP", "Organic Diff.",
+    "Map Pack", "Map Pack Max Reviews", "Ads seen (SERP check)", "Organic Diff.",
     ...Array.from({ length: 10 }, (_, i) => `Top ${i + 1}`),
   ]);
   styleHeader(header);
