@@ -25,7 +25,7 @@ The app asks you to confirm any run over $5.
 
 | Step | Data (DataForSEO) | Cost |
 |---|---|---|
-| 1. Niche snapshot | Google Ads national volume, CPC, top-of-page bids, ads competition + Labs keyword difficulty for each keyword variant | ~$0.10 |
+| 1. Niche snapshot | Google Ads national volume, CPC, top-of-page bids, ads competition + keyword difficulty for each keyword variant | ~$0.01 (Labs) or ~$0.10 (live Google Ads) |
 | 2. City SERP check | Live Google top 10 for the keyword in every city: weak sites (directories, job boards, social, big-box), city-targeted competitors, map pack & its review counts, ads | ~$0.002 / city |
 | 3. *(optional)* Exact city demand | Google Ads volume + CPC targeted to each city (variants + "variant city") | ~$0.09 / city, ~5 s each (Google allows 12 requests/min) |
 
@@ -59,8 +59,14 @@ the name would go over 28 characters, e.g. "Colorado Springs Stair Lift". The Do
 - **High Ads / Low Organic** button = Verdict is Target or Target?. Untick *Target?* in the Verdict chips to see
   confirmed rows only. You can also filter on Min Ads Score / Min Organic Ease.
 
-**City-level ads data.** Every run (except Estimate only) makes one Google Ads request for the phrases people search,
-e.g. "plumber tampa": ~$0.09 for up to 1,000 cities. It gives each city its **own CPC, top-of-page bids and competition**.
+**Ads data source.** Pick it on Research, Keyword Check and "Accurate data" (remembered per browser):
+- **Cheap — DataForSEO Labs** (default): the same Google Ads CPC, bids, competition and volume, refreshed monthly and
+  US-level, with keyword difficulty included. ~$0.01 per request + $0.0001 per keyword it has data for.
+- **Live Google Ads**: today's Google Ads data, flat ~$0.09 per request of up to 1,000 keywords. Keyword Check then
+  targets the city itself; with Labs it looks up the local phrase ("keyword + city").
+
+**City-level ads data.** Every run (except Estimate only) makes one ads request for the phrases people search,
+e.g. "plumber tampa" (~$0.04 for 300 cities with Labs, ~$0.09 for up to 1,000 cities with live Google Ads). It gives each city its **own CPC, top-of-page bids and competition**.
 In a real test, "plumber tampa" had a $44.64 CPC and index 73, while "plumber new york" had $13.49 and index 41. Cities
 without ads data for the phrase keep the national value, marked `US`. Exact city-targeted Google Ads data
 ("Exact city volume") still wins when you fetch it.

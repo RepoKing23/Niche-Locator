@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { dataForSeoLocationName, findCity } from "@/lib/cities";
 import {
-  DataForSeoError, fetchCityDifficulty, fetchKeywordsInCity, hasCredentials, validAdsKeyword,
+  DataForSeoError, cityKeyword, fetchCityDifficulty, fetchKeywordsInCity, fetchLabsOverview, hasAdsData, hasCredentials,
+  validAdsKeyword,
 } from "@/lib/dataforseo";
+import { mentionsPlace } from "@/lib/location";
 import { cleanKeyword } from "@/lib/keywords";
 import { mockKeywordDifficulty, mockKeywordInCity } from "@/lib/mock";
 import { requireUser } from "@/lib/supabase/server";
@@ -15,11 +17,14 @@ const Body = z.object({
   cityId: z.string(),
   /** Skip KD when it's already cached on the client. */
   withKd: z.boolean().default(true),
+  source: z.enum(["labs", "ads"]).default("labs"),
 });
 
 /**
- * Keyword Check: for pasted keywords in one city, return Google Ads data targeted to that city
- * (~$0.09 per 1,000 keywords) and DataForSEO Labs keyword difficulty (~$0.01 + $0.0001/keyword).
+ * Keyword Check: for pasted keywords in one city, return ads data + keyword difficulty.
+ * - labs (default): DataForSEO Labs data for the local phrase ("keyword" + city unless it already names it),
+ *   ads metrics and KD in one call, ~$0.01 + $0.0001/keyword.
+ * - ads: Google Ads data targeted to the city (~$0.09 per 1,000 keywords) + Labs KD for the keyword.
  */
 export async function POST(request: Request) {
   const denied = await requireUser();
@@ -38,6 +43,15 @@ export async function POST(request: Request) {
     if (!hasCredentials()) {
       ads = Object.fromEntries(keywords.map((k) => [k, mockKeywordInCity(k, city)]));
       if (parsed.data.withKd) kd = Object.fromEntries(keywords.map((k) => [k, mockKeywordDifficulty(k)]));
+    } else if (parsed.data.source === "labs") {
+      const phrase = (k: string) => {
+        const has = mentionsPlace(k, city.name, city.stateCode, city.state);
+        return has.city ? k : cityKeyword(k, city.name);
+      };
+      const r = await fetchLabsOverview([...new Set(keywords.map(phrase))]);
+      ads = Object.fromEntries(keywords.map((k) => [k, hasAdsData(r.metrics.get(phrase(k)))]));
+      kd = Object.fromEntries(keywords.map((k) => [k, r.difficulty.get(phrase(k)) ?? null]));
+      cost = r.cost;
     } else {
       const [a, d] = await Promise.all([
         fetchKeywordsInCity(keywords, dataForSeoLocationName(city)),

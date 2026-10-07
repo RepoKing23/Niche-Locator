@@ -6,6 +6,7 @@
 import { SERP_BATCH, SERP_PARALLEL, postJson, sleep } from "./api";
 import { cacheKey, type CacheKind } from "./cache";
 import { chunk } from "./keywords";
+import type { AdsSource } from "./dataforseo";
 import type { Store } from "./store/types";
 import type { KeywordMetrics, LocalDemand, SerpInfo } from "./types";
 
@@ -14,6 +15,8 @@ export type FetchOptions = {
   /** Ignore cached results and pay for fresh data. */
   refresh?: boolean;
   shouldStop?: () => boolean;
+  /** Ads data source; Labs also returns keyword difficulty, cached as a free bonus. */
+  source?: AdsSource;
 };
 
 export type Batch<T> = { results: Record<string, T>; errors: Record<string, string>; cost: number; cached: number };
@@ -74,10 +77,14 @@ export async function getCityAds(
   for (const ids of chunk(missing, 1000)) {
     if (opts.shouldStop?.()) break;
     try {
-      const r = await postJson<{ results: Record<string, KeywordMetrics | null>; cost: number }>("/api/city-ads", { keyword, cityIds: ids });
+      const r = await postJson<{ results: Record<string, KeywordMetrics | null>; kd?: Record<string, number | null>; cost: number }>(
+        "/api/city-ads", { keyword, cityIds: ids, source: opts.source ?? "labs" },
+      );
       Object.assign(out.results, r.results);
       out.cost += r.cost;
       await toCache(opts, "ads", Object.entries(r.results).map(([id, v]) => [keys.get(id)!, v]));
+      // Labs returns KD for the same phrases: cache it so the KD step costs nothing.
+      if (r.kd) await toCache(opts, "kd", Object.entries(r.kd).map(([id, v]) => [cacheKey.kd(keyword, id), v]));
     } catch (e) {
       ids.forEach((id) => (out.errors[id] = (e as Error).message));
     }
@@ -97,8 +104,12 @@ export type KeywordCheckData = {
 /** City-targeted Google Ads data + keyword difficulty for pasted keywords (cache first). */
 export async function getKeywordCheck(keywords: string[], cityId: string, opts: FetchOptions): Promise<KeywordCheckData> {
   // Cached under existing kinds with distinct keys: city-targeted ads → "local", keyword KD → "kd" (US-wide).
-  const adsKeys = new Map(keywords.map((k) => [k, `check:${k}|${cityId}`]));
-  const kdKeys = new Map(keywords.map((k) => [k, `${k}|us`]));
+  // Labs data is for the local phrase, so it gets its own keys.
+  const source = opts.source ?? "labs";
+  const adsKey = (k: string) => (source === "labs" ? `checklabs:${k}|${cityId}` : `check:${k}|${cityId}`);
+  const kdKey = (k: string) => (source === "labs" ? `checklabs:${k}|${cityId}` : `${k}|us`);
+  const adsKeys = new Map(keywords.map((k) => [k, adsKey(k)]));
+  const kdKeys = new Map(keywords.map((k) => [k, kdKey(k)]));
   const [adsHits, kdHits] = await Promise.all([
     fromCache<KeywordMetrics | null>(opts, "local", adsKeys),
     fromCache<number | null>(opts, "kd", kdKeys),
@@ -111,15 +122,15 @@ export async function getKeywordCheck(keywords: string[], cityId: string, opts: 
   for (const batch of chunk(missing, 1000)) {
     if (opts.shouldStop?.()) break;
     const r = await postJson<{ keywords: string[]; ads: Record<string, KeywordMetrics | null>; kd: Record<string, number | null>; cost: number }>(
-      "/api/keyword-check", { keywords: batch, cityId, withKd: batch.some((k) => !kdHits.has(k)) },
+      "/api/keyword-check", { keywords: batch, cityId, withKd: batch.some((k) => !kdHits.has(k)), source },
     );
     out.cost += r.cost;
     for (const k of r.keywords) {
       out.ads[k] = r.ads[k] ?? null;
       if (k in r.kd || !kdHits.has(k)) out.kd[k] = r.kd[k] ?? null;
     }
-    await toCache(opts, "local", r.keywords.map((k) => [adsKeys.get(k) ?? `check:${k}|${cityId}`, r.ads[k] ?? null]));
-    await toCache(opts, "kd", r.keywords.filter((k) => !kdHits.has(k)).map((k) => [kdKeys.get(k) ?? `${k}|us`, r.kd[k] ?? null]));
+    await toCache(opts, "local", r.keywords.map((k) => [adsKeys.get(k) ?? adsKey(k), r.ads[k] ?? null]));
+    await toCache(opts, "kd", r.keywords.filter((k) => !kdHits.has(k)).map((k) => [kdKeys.get(k) ?? kdKey(k), r.kd[k] ?? null]));
   }
   return out;
 }

@@ -14,7 +14,17 @@ export const PRICES = {
   googleAdsRequest: 0.09,
   difficultyRequest: 0.0125,
   serpRequest: 0.002,
+  labsRequest: 0.01,
+  labsPerKeyword: 0.0001,
 };
+
+/**
+ * Where keyword volume/CPC/competition come from:
+ * - "labs": DataForSEO Labs Keyword Overview — Google Ads data refreshed monthly, plus keyword difficulty,
+ *   ~$0.01 + $0.0001/keyword (only keywords it has data for are charged). US-level.
+ * - "ads": live Google Ads API — flat ~$0.09 per request of up to 1,000 keywords; can target a city.
+ */
+export type AdsSource = "labs" | "ads";
 
 /** Google Ads live endpoints allow 12 requests/minute per account. */
 export const GOOGLE_ADS_MIN_INTERVAL_MS = 5200;
@@ -107,8 +117,82 @@ export function parseDifficulty(results: DifficultyResult[]): Map<string, number
   return map;
 }
 
-/** National Google Ads metrics + Labs keyword difficulty for the niche variants. */
-export async function fetchNiche(variants: string[]) {
+// ---- DataForSEO Labs Keyword Overview: Google Ads metrics + keyword difficulty in one cheap call ----
+
+export const MAX_LABS_KEYWORDS = 700;
+
+export type LabsOverviewItem = {
+  keyword: string;
+  keyword_info?: {
+    search_volume?: number | null;
+    cpc?: number | null;
+    competition?: number | null;
+    competition_level?: Competition | null;
+    low_top_of_page_bid?: number | null;
+    high_top_of_page_bid?: number | null;
+    monthly_searches?: { year: number; month: number; search_volume: number | null }[] | null;
+  } | null;
+  keyword_properties?: { keyword_difficulty?: number | null } | null;
+};
+
+/** Labs items → the same metrics shape as Google Ads (competition 0-1 → index 0-100). */
+export function parseLabsOverview(items: LabsOverviewItem[]) {
+  const metrics = new Map<string, KeywordMetrics>();
+  const difficulty = new Map<string, number | null>();
+  for (const i of items) {
+    const k = i.keyword.toLowerCase();
+    const info = i.keyword_info ?? {};
+    difficulty.set(k, i.keyword_properties?.keyword_difficulty ?? null);
+    metrics.set(k, {
+      keyword: k,
+      searchVolume: info.search_volume ?? null,
+      cpc: info.cpc ?? null,
+      lowBid: info.low_top_of_page_bid ?? null,
+      highBid: info.high_top_of_page_bid ?? null,
+      competition: info.competition_level ?? null,
+      competitionIndex: info.competition == null ? null : Math.round(info.competition * 100),
+      trend: [...(info.monthly_searches ?? [])]
+        .sort((a, b) => a.year - b.year || a.month - b.month)
+        .slice(-12)
+        .map((m) => m.search_volume ?? 0),
+    });
+  }
+  return { metrics, difficulty };
+}
+
+/** Labs Keyword Overview for up to any number of keywords (700 per request). US-level data. */
+export async function fetchLabsOverview(keywords: string[]) {
+  const metrics = new Map<string, KeywordMetrics>();
+  const difficulty = new Map<string, number | null>();
+  let cost = 0;
+  for (let i = 0; i < keywords.length; i += MAX_LABS_KEYWORDS) {
+    const r = await post<{ items: LabsOverviewItem[] | null }>("/dataforseo_labs/google/keyword_overview/live", {
+      keywords: keywords.slice(i, i + MAX_LABS_KEYWORDS), location_code: US_LOCATION_CODE, language_code: "en",
+    });
+    cost += r.cost;
+    const parsed = parseLabsOverview(r.result.flatMap((x) => x.items ?? []));
+    parsed.metrics.forEach((v, k) => metrics.set(k, v));
+    parsed.difficulty.forEach((v, k) => difficulty.set(k, v));
+  }
+  return { metrics, difficulty, cost };
+}
+
+/** Metrics with no volume, CPC or competition are treated as "no data". */
+export const hasAdsData = (m: KeywordMetrics | undefined | null) =>
+  m && (m.cpc != null || m.competitionIndex != null || m.searchVolume != null) ? m : null;
+
+/** National Google Ads metrics + keyword difficulty for the niche variants. */
+export async function fetchNiche(variants: string[], source: AdsSource = "labs") {
+  if (source === "labs") {
+    const { metrics, difficulty, cost } = await fetchLabsOverview(variants);
+    return {
+      metrics: variants.flatMap((v) => {
+        const m = metrics.get(v.toLowerCase());
+        return m ? [{ ...m, difficulty: difficulty.get(v.toLowerCase()) ?? null }] : [];
+      }),
+      cost,
+    };
+  }
   const [sv, kd] = await Promise.all([
     post<SearchVolumeItem>("/keywords_data/google_ads/search_volume/live", {
       keywords: variants, location_code: US_LOCATION_CODE, language_code: "en",
@@ -283,9 +367,17 @@ export async function getSerpTask(taskId: string): Promise<SerpTaskState> {
 
 // ---- City-level Google Ads data for "<keyword> <city>" phrases (flat ~$0.09 per 1,000 phrases) ----
 
-/** Google Ads CPC, bids, competition and volume for city phrases; phrases without ads data map to null. */
-export async function fetchCityAds(keywords: string[]) {
+/**
+ * Google Ads CPC, bids, competition and volume for city phrases; phrases without ads data map to null.
+ * With Labs, keyword difficulty for the same phrases comes back too (no separate KD request needed).
+ */
+export async function fetchCityAds(keywords: string[], source: AdsSource = "labs") {
   const ads = new Map<string, KeywordMetrics | null>();
+  if (source === "labs") {
+    const { metrics, difficulty, cost } = await fetchLabsOverview(keywords);
+    for (const k of keywords) ads.set(k, hasAdsData(metrics.get(k)));
+    return { ads, difficulty: new Map(keywords.map((k) => [k, difficulty.get(k) ?? null])), cost };
+  }
   let cost = 0;
   for (let i = 0; i < keywords.length; i += MAX_KD_KEYWORDS) {
     const batch = keywords.slice(i, i + MAX_KD_KEYWORDS);
@@ -296,10 +388,10 @@ export async function fetchCityAds(keywords: string[]) {
     const byKeyword = new Map(parseSearchVolume(r.result).map((m) => [m.keyword.toLowerCase(), m]));
     for (const k of batch) {
       const m = byKeyword.get(k) ?? null;
-      ads.set(k, m && (m.cpc != null || m.competitionIndex != null || m.searchVolume != null) ? m : null);
+      ads.set(k, hasAdsData(m));
     }
   }
-  return { ads, cost };
+  return { ads, difficulty: null, cost };
 }
 
 // ---- Keyword Check: pasted keywords, Google Ads data targeted to one city ----

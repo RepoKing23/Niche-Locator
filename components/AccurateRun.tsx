@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import AdsSourcePicker, { useAdsSource } from "./AdsSourcePicker";
 import { LOCAL_INTERVAL_MS, PRICES, QUEUE_POLL_MS, sleep } from "@/lib/api";
 import { getCityAds, getCityKd, getLiveSerps, getLocal, getQueuedSerps, type Batch } from "@/lib/fetchers";
 import { refreshRow, withScores } from "@/lib/scoring";
@@ -41,9 +42,12 @@ export default function AccurateRun({ items: allItems, mode, flash, onUpdated }:
   const items = onlyTargets ? allItems.filter(isTarget) : allItems;
   const n = items.length;
   const keywords = new Set(items.map((i) => i.keyword)).size;
+  const source = useAdsSource();
+  const labs = source === "labs";
   const cost =
-    (doAds ? keywords * PRICES.cityAdsRequest : 0) +
-    (doKd ? keywords * PRICES.kdRequest + n * PRICES.kdKeyword : 0) +
+    (doAds ? (labs ? keywords * PRICES.labsRequest + n * PRICES.labsKeyword : keywords * PRICES.cityAdsRequest) : 0) +
+    // Labs ads data already includes keyword difficulty.
+    (doKd && !(labs && doAds) ? keywords * PRICES.kdRequest + n * PRICES.kdKeyword : 0) +
     (serpMode === "queued" ? n * PRICES.serpQueued : serpMode === "live" ? n * PRICES.serp : 0) +
     (doLocal ? n * PRICES.local : 0);
   const minutes = doLocal && mode === "live" ? Math.ceil((n * LOCAL_INTERVAL_MS) / 60000) : serpMode === "queued" ? 5 : 1;
@@ -52,7 +56,7 @@ export default function AccurateRun({ items: allItems, mode, flash, onUpdated }:
     if (!n || (!doAds && !doKd && serpMode === "off" && !doLocal)) return;
     stopRef.current = false;
     const store = getStore();
-    const opts = { store, refresh, shouldStop: () => stopRef.current };
+    const opts = { store, refresh, shouldStop: () => stopRef.current, source };
     // Work on a local copy so KD, SERP and volume updates stack on the same row.
     const current = new Map(items.map((i) => [i.id, i]));
     let failures = 0;
@@ -89,7 +93,8 @@ export default function AccurateRun({ items: allItems, mode, flash, onUpdated }:
         setProgress({ label: "City keyword difficulty", done: 0, total: n });
         for (const [keyword, group] of byKeyword) {
           if (stopRef.current) break;
-          const r = await getCityKd(keyword, [...new Set(group.map((i) => i.cityId))], opts);
+          // After a Labs ads step the KD is already cached, so read it from there.
+          const r = await getCityKd(keyword, [...new Set(group.map((i) => i.cityId))], labs && doAds ? { ...opts, refresh: false } : opts);
           cachedHits += r.cached;
           failures += Object.keys(r.errors).length;
           await save(Object.entries(r.results).flatMap(([cityId, kd]) =>
@@ -182,8 +187,9 @@ export default function AccurateRun({ items: allItems, mode, flash, onUpdated }:
           </label>
           <label className="flex items-start gap-2">
             <input type="checkbox" className="mt-1" checked={doAds} onChange={(e) => setDoAds(e.target.checked)} />
-            <span>City Google Ads data <span className="text-zinc-500">— city CPC, bids &amp; competition, ~$0.09 per keyword (up to 1,000 cities)</span></span>
+            <span>City Google Ads data <span className="text-zinc-500">— city CPC, bids &amp; competition, {labs ? "~$0.01 per keyword + $0.0001/row (includes difficulty)" : "~$0.09 per keyword (up to 1,000 cities)"}</span></span>
           </label>
+          {doAds && <div className="ml-6"><AdsSourcePicker name="ads-source-accurate" compact /></div>}
           <label className="flex items-start gap-2">
             <input type="checkbox" className="mt-1" checked={doKd} onChange={(e) => setDoKd(e.target.checked)} />
             <span>City keyword difficulty <span className="text-zinc-500">— ~$0.0001/row (+$0.01 per keyword)</span></span>

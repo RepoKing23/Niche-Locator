@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import DataTable from "./DataTable";
+import AdsSourcePicker, { useAdsSource } from "./AdsSourcePicker";
 import SaveToList from "./SaveToList";
 import { PRICES, QUEUE_POLL_MS } from "@/lib/api";
 import { CITIES, type City } from "@/lib/cities";
@@ -49,10 +50,13 @@ export default function KeywordChecker({ mode }: { mode: "live" | "demo" }) {
   }, [text]);
   const city = CITY_BY_LABEL.get(cityInput.trim().toLowerCase()) ?? null;
 
+  const source = useAdsSource();
   const n = parsed.valid.length;
   const requests = Math.max(1, Math.ceil(n / 1000));
   const estCost = n
-    ? requests * (PRICES.cityAdsRequest + PRICES.kdRequest) + n * PRICES.kdKeyword +
+    ? (source === "labs"
+      ? Math.ceil(n / 700) * PRICES.labsRequest + n * PRICES.labsKeyword
+      : requests * (PRICES.cityAdsRequest + PRICES.kdRequest) + n * PRICES.kdKeyword) +
       (serpMode === "live" ? n * PRICES.serp : serpMode === "queued" ? n * PRICES.serpQueued : 0)
     : 0;
 
@@ -62,7 +66,7 @@ export default function KeywordChecker({ mode }: { mode: "live" | "demo" }) {
     if (!n) return setError("Paste at least one keyword (one per line).");
     if (mode === "live" && estCost > 2 && !window.confirm(`Checking ${n} keywords costs up to about $${estCost.toFixed(2)}. Continue?`)) return;
     stopRef.current = false;
-    const opts = { store: getStore(), refresh, shouldStop: () => stopRef.current };
+    const opts = { store: getStore(), refresh, shouldStop: () => stopRef.current, source };
     const keywords = parsed.valid;
     setResult(null);
     setProgress({ label: `Google Ads data in ${cityLabel(city)} + keyword difficulty`, done: 0, total: keywords.length });
@@ -163,13 +167,16 @@ export default function KeywordChecker({ mode }: { mode: "live" | "demo" }) {
               </label>
             ))}
           </fieldset>
+          <AdsSourcePicker name="ads-source-check" />
           <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
             <input type="checkbox" checked={refresh} onChange={(e) => setRefresh(e.target.checked)} />
             Refresh — ignore results cached in the last 30 days
           </label>
           <div className="rounded-md bg-zinc-50 p-3 text-sm dark:bg-zinc-800/60">
             Est. cost: <b>{mode === "demo" ? "$0 (demo)" : `~$${estCost.toFixed(3)}`}</b>
-            <span className="block text-xs text-zinc-500">Ads data ~$0.09 per 1,000 keywords · cached results are free</span>
+            <span className="block text-xs text-zinc-500">
+              {source === "labs" ? "Labs: ads data for \"keyword + city\" (US-level, monthly)" : "Google Ads targeted to the city, ~$0.09 per 1,000 keywords"} · cached results are free
+            </span>
           </div>
           <div className="flex gap-2">
             <button className="btn-primary flex-1" disabled={busy} onClick={run}>{busy ? "Checking…" : "Check keywords"}</button>

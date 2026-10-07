@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/supabase/server";
 const Body = z.object({
   niche: z.string().trim().min(2).max(80),
   variants: z.array(z.string().trim().min(2).max(60)).min(1).max(20),
+  source: z.enum(["labs", "ads"]).default("labs"),
 });
 
 /** National snapshot of the niche: CPC, bids, ads competition, volume and keyword difficulty. */
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
   const variants = [...new Set(parsed.data.variants.map(cleanKeyword).filter((v) => v.length >= 2))];
   const live = hasCredentials();
   try {
-    const { metrics, cost } = live ? await fetchNiche(variants) : mockNiche(variants);
+    const { metrics, cost } = live ? await fetchNiche(variants, parsed.data.source) : mockNiche(variants);
     return Response.json({
       mode: live ? "live" : "demo",
       snapshot: buildSnapshot(cleanKeyword(parsed.data.niche), metrics, cost),

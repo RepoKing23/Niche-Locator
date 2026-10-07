@@ -10,13 +10,25 @@ export const PRICES = {
   /** Google Ads search_volume: flat per request of up to 1,000 phrases. */
   cityAdsRequest: 0.09,
   local: 0.09,
+  /** DataForSEO Labs Keyword Overview (ads metrics + KD): per request + per keyword returned. */
+  labsRequest: 0.01,
+  labsKeyword: 0.0001,
 };
 
+/** Niche snapshot cost by ads data source (Labs = one overview call; Google Ads = ads + KD calls). */
+export const nicheCost = (source: "labs" | "ads", variants = 10) =>
+  source === "labs" ? PRICES.labsRequest + variants * PRICES.labsKeyword : PRICES.niche;
+
+/** City ads data for n city phrases (Labs includes keyword difficulty). */
+export const cityAdsCost = (source: "labs" | "ads", n: number) =>
+  n === 0 ? 0 : source === "labs" ? Math.ceil(n / 700) * PRICES.labsRequest + n * PRICES.labsKeyword
+    : Math.ceil(n / 1000) * PRICES.cityAdsRequest;
+
 /** Estimated DataForSEO cost of city ads + organic data for n cities (before cache hits). */
-export function organicCost(mode: "kd" | "queued" | "live" | "estimate", n: number): number {
+export function organicCost(mode: "kd" | "queued" | "live" | "estimate", n: number, source: "labs" | "ads" = "labs"): number {
   if (mode === "estimate" || n === 0) return 0;
   const requests = Math.ceil(n / 1000);
-  const kd = requests * (PRICES.kdRequest + PRICES.cityAdsRequest) + n * PRICES.kdKeyword;
+  const kd = cityAdsCost(source, n) + (source === "labs" ? 0 : requests * PRICES.kdRequest + n * PRICES.kdKeyword);
   if (mode === "kd") return kd;
   return kd + n * (mode === "queued" ? PRICES.serpQueued : PRICES.serp);
 }

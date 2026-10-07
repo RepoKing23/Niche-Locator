@@ -50,7 +50,7 @@ describe("keyword check rows", () => {
 });
 
 describe("getKeywordCheck", () => {
-  it("only pays for uncached keywords", async () => {
+  it("only pays for uncached keywords (live Google Ads)", async () => {
     const calls: { keywords: string[]; withKd: boolean }[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_u: string, init: RequestInit) => {
       const body = JSON.parse(String(init.body));
@@ -63,13 +63,18 @@ describe("getKeywordCheck", () => {
       }), { status: 200 });
     }));
     const store = new LocalStore(memoryKV(), new MemoryCache());
-    const first = await getKeywordCheck(["plumber", "rare thing"], "tampa-fl", { store });
+    const first = await getKeywordCheck(["plumber", "rare thing"], "tampa-fl", { store, source: "ads" });
     expect(first).toMatchObject({ cost: 0.1, cached: 0, ads: { "rare thing": null }, kd: { plumber: 10 } });
-    const second = await getKeywordCheck(["plumber", "rare thing", "water heater repair"], "tampa-fl", { store });
-    expect(calls[1]).toEqual({ keywords: ["water heater repair"], cityId: "tampa-fl", withKd: true });
+    const second = await getKeywordCheck(["plumber", "rare thing", "water heater repair"], "tampa-fl", { store, source: "ads" });
+    expect(calls[1]).toEqual({ keywords: ["water heater repair"], cityId: "tampa-fl", withKd: true, source: "ads" });
     expect(second.cached).toBe(2);
     // Same keywords in another city: ads are city-specific, KD is reused.
-    await getKeywordCheck(["plumber"], "boise-id", { store });
-    expect(calls[2]).toEqual({ keywords: ["plumber"], cityId: "boise-id", withKd: false });
+    await getKeywordCheck(["plumber"], "boise-id", { store, source: "ads" });
+    expect(calls[2]).toEqual({ keywords: ["plumber"], cityId: "boise-id", withKd: false, source: "ads" });
+    // Labs data is for the local phrase, so it is cached separately per city.
+    await getKeywordCheck(["plumber"], "tampa-fl", { store });
+    expect(calls[3]).toEqual({ keywords: ["plumber"], cityId: "tampa-fl", withKd: true, source: "labs" });
+    await getKeywordCheck(["plumber"], "tampa-fl", { store });
+    expect(calls).toHaveLength(4);
   });
 });

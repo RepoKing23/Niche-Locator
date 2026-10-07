@@ -5,7 +5,8 @@ import CityPicker from "./CityPicker";
 import DataTable, { type ActionContext } from "./DataTable";
 import SaveToList from "./SaveToList";
 import SnapshotPanel from "./SnapshotPanel";
-import { LOCAL_INTERVAL_MS, PRICES, QUEUE_POLL_MS, organicCost, postJson, sleep } from "@/lib/api";
+import AdsSourcePicker, { useAdsSource } from "./AdsSourcePicker";
+import { LOCAL_INTERVAL_MS, PRICES, QUEUE_POLL_MS, nicheCost, organicCost, postJson, sleep } from "@/lib/api";
 import { cacheKey } from "@/lib/cache";
 import { collectQueued, getCityAds, getCityKd, getLiveSerps, getLocal, getQueuedSerps, pendingTasks, type Batch } from "@/lib/fetchers";
 import { CITIES, findCity } from "@/lib/cities";
@@ -51,7 +52,7 @@ function parseSelection(raw: string): Set<string> {
 
 
 const ORGANIC_MODES: { value: OrganicMode; label: string; hint: string }[] = [
-  { value: "kd", label: "City ads + keyword difficulty", hint: "city CPC & competition + Labs difficulty, ~$0.10 per 1,000 cities + $0.0001/city" },
+  { value: "kd", label: "City ads + keyword difficulty", hint: "city CPC & competition + keyword difficulty for \"keyword + city\"" },
   { value: "queued", label: "+ Queued SERP check", hint: "adds live top-10 analysis & ads seen on Google, ~$0.0006/city, 1–5 min" },
   { value: "live", label: "+ Live SERP check", hint: "same analysis, ~$0.002/city, results in seconds" },
   { value: "estimate", label: "Estimate only", hint: "free — national ads data, size-based organic guess" },
@@ -111,7 +112,9 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
     }
   };
 
-  const estCost = PRICES.niche + organicCost(organicMode, cityIds.length) + (exactLocal ? cityIds.length * PRICES.local : 0);
+  const source = useAdsSource();
+  const estCost = nicheCost(source, variants.length) + organicCost(organicMode, cityIds.length, source) +
+    (exactLocal ? cityIds.length * PRICES.local : 0);
   const estMinutes = exactLocal
     ? Math.ceil((cityIds.length * LOCAL_INTERVAL_MS) / 60000)
     : organicMode === "queued" ? 5 : Math.max(1, Math.ceil(cityIds.length / 400));
@@ -126,8 +129,8 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
   }, [refreshSaved]);
 
   const fetchOpts = useCallback(
-    (force = false) => ({ store: getStore(), refresh: force || refresh, shouldStop: () => cancelRef.current }),
-    [refresh],
+    (force = false) => ({ store: getStore(), refresh: force || refresh, shouldStop: () => cancelRef.current, source }),
+    [refresh, source],
   );
 
   /** Merge a batch of SERP results into the open report (only if it's for the report's keyword). */
@@ -141,12 +144,16 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
     }) : prev);
   }, [updateReport]);
 
-  /** City-level Google Ads data + city keyword difficulty for every city, in parallel (cache first). */
+  /** City-level Google Ads data + city keyword difficulty for every city (cache first). */
   const runCityData = useCallback(async (keyword: string, ids: string[], force = false) => {
     const label = "Getting city Google Ads data + keyword difficulty";
     setProgress({ label, done: 0, total: ids.length });
     updateReport((prev) => prev && { ...prev, kdPending: true, adsPending: true });
-    const [kd, ads] = await Promise.all([getCityKd(keyword, ids, fetchOpts(force)), getCityAds(keyword, ids, fetchOpts(force))]);
+    const opts = fetchOpts(force);
+    // Labs returns KD with the ads data (and caches it), so the KD step after it is free.
+    const [kd, ads] = opts.source === "labs"
+      ? await (async () => { const a = await getCityAds(keyword, ids, opts); return [await getCityKd(keyword, ids, { ...opts, refresh: false }), a] as const; })()
+      : await Promise.all([getCityKd(keyword, ids, opts), getCityAds(keyword, ids, opts)]);
     updateReport((prev) => prev && ({
       ...prev,
       kds: { ...prev.kds, ...kd.results },
@@ -235,7 +242,7 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
     let snapshot: NicheSnapshot;
     let apiMode: "live" | "demo";
     try {
-      const r = await postJson<{ snapshot: NicheSnapshot; mode: "live" | "demo" }>("/api/niche", { niche, variants });
+      const r = await postJson<{ snapshot: NicheSnapshot; mode: "live" | "demo" }>("/api/niche", { niche, variants, source });
       snapshot = r.snapshot;
       apiMode = r.mode;
     } catch (e) {
@@ -420,6 +427,7 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
                 </label>
               ))}
             </fieldset>
+            <AdsSourcePicker name="ads-source-research" />
             <label className="flex items-start gap-2 text-sm">
               <input type="checkbox" className="mt-1" checked={exactLocal} onChange={(e) => setExactLocal(e.target.checked)} />
               <span>
