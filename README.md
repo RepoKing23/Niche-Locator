@@ -203,8 +203,8 @@ their own lists and reports (enforced by row-level security in the database).
    `http://localhost:3000/auth/callback**`) to Redirect URLs, for magic links, email confirmation and password
    resets (the `**` lets the link carry the page to return to).
 4. Restart the app. You'll be sent to `/login`: create an account, confirm your email, and sign in.
-   Forgot your password? Use **Forgot password?** on the sign-in page; the email link opens **Account**, where
-   you set a new one. Click your email in the top bar to open Account any time (change password, sign out).
+   Forgot your password? Use **Forgot password?** on the sign-in page; the email link opens a **Set a new
+   password** page, and the app stays locked until you choose one. Click your email in the top bar to open Account any time (change password, sign out).
    To keep it private, turn off new signups after creating your account (Authentication → Providers → Email →
    *Allow new users to sign up*).
 

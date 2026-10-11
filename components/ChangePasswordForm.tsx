@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 
-/** Sets a new password for the signed-in user (also used after a password-reset email). */
+/** Sets a new password for the signed-in user. */
 export default function ChangePasswordForm() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");

@@ -1,10 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_ANON_KEY, SUPABASE_URL, supabaseConfigured } from "@/lib/supabase/config";
+import { RESET_COOKIE, RESET_PATH } from "@/lib/passwordReset";
 
 const PUBLIC_PATHS = ["/login", "/auth/"];
 
-/** Refreshes the Supabase session cookie and sends signed-out visitors to /login. */
+/**
+ * Refreshes the Supabase session cookie, sends signed-out visitors to /login, and keeps
+ * someone who arrived from a password-reset email on /reset-password until they set one.
+ */
 export async function proxy(request: NextRequest) {
   if (!supabaseConfigured) return NextResponse.next();
 
@@ -30,9 +34,22 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = path === "/" ? "" : `?next=${encodeURIComponent(path + request.nextUrl.search)}`;
+    const redirect = NextResponse.redirect(url);
+    redirect.cookies.delete(RESET_COOKIE);
+    return redirect;
+  }
+  if (!data.user) {
+    if (request.cookies.has(RESET_COOKIE)) response.cookies.delete(RESET_COOKIE);
+    return response;
+  }
+  if (request.cookies.has(RESET_COOKIE) && path !== RESET_PATH && !path.startsWith("/auth/")) {
+    if (path.startsWith("/api/")) return Response.json({ error: "Set a new password first." }, { status: 403 });
+    const url = request.nextUrl.clone();
+    url.pathname = RESET_PATH;
+    url.search = "";
     return NextResponse.redirect(url);
   }
-  if (data.user && path === "/login") {
+  if (path === "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";

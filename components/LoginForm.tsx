@@ -68,7 +68,7 @@ export default function LoginForm({ next = "/", initialError = "" }: { next?: st
         if (error) throw error;
         setMessage("Check your email for a sign-in link.");
       } else {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: callback("/account?reset=1") });
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: callback("/reset-password") });
         if (error) throw error;
         setMessage("If that email has an account, a link to set a new password is on its way.");
       }
