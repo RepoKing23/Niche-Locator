@@ -196,7 +196,7 @@ their own lists and reports (enforced by row-level security in the database).
      (this repo has no `main` yet). The integration applies `supabase/migrations/*.sql` when that branch changes, or
    - paste each file in `supabase/migrations/` in order (`20260929…_keyword_lists.sql`,
      `20260930…_api_cache.sql`, `20261001…_api_cache_ads.sql`) into the Supabase **SQL Editor** and run it.
-2. **Keys:** from Project Settings → API, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+2. **Keys:** from Project Settings → API, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable key; `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` also works)
    in `.env.local` (and in Vercel's environment variables).
 3. **Auth:** Authentication → Providers → Email is on by default. Under Authentication → URL Configuration,
    set the Site URL to your app's URL and add `https://<your-app>/auth/callback**` (and
