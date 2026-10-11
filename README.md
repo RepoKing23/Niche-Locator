@@ -196,9 +196,12 @@ their own lists and reports (enforced by row-level security in the database).
 2. **Keys:** from Project Settings → API, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    in `.env.local` (and in Vercel's environment variables).
 3. **Auth:** Authentication → Providers → Email is on by default. Under Authentication → URL Configuration,
-   set the Site URL to your app's URL and add `https://<your-app>/auth/callback` (and
-   `http://localhost:3000/auth/callback`) to Redirect URLs, for magic links and email confirmation.
+   set the Site URL to your app's URL and add `https://<your-app>/auth/callback**` (and
+   `http://localhost:3000/auth/callback**`) to Redirect URLs, for magic links, email confirmation and password
+   resets (the `**` lets the link carry the page to return to).
 4. Restart the app. You'll be sent to `/login`: create an account, confirm your email, and sign in.
+   Forgot your password? Use **Forgot password?** on the sign-in page; the email link opens **Account**, where
+   you set a new one. Click your email in the top bar to open Account any time (change password, sign out).
    To keep it private, turn off new signups after creating your account (Authentication → Providers → Email →
    *Allow new users to sign up*).
 

@@ -232,7 +232,7 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
 
   const run = async () => {
     setError("");
-    if (cleanKeyword(niche).length < 2) return setError("Enter a niche, e.g. “stairway installer”.");
+    if (cleanKeyword(niche).length < 2) return setError("Enter a niche, e.g. “garage door repair”.");
     if (!variants.length) return setError("Add at least one keyword variant.");
     if (!cityIds.length) return setError("Select at least one city.");
     if (mode === "live" && estCost > 5 && !window.confirm(`This run checks ${cityIds.length.toLocaleString()} cities and costs about $${estCost.toFixed(2)}. Continue?`)) return;
@@ -404,7 +404,7 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
         <div className="grid gap-4 md:grid-cols-3">
           <label className="block text-sm font-medium">
             Niche
-            <input className="input mt-1 w-full text-base" placeholder="e.g. stairway installer" value={niche}
+            <input className="input mt-1 w-full text-base" placeholder="e.g. garage door repair" value={niche}
               onChange={(e) => onNicheChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !busy && run()} />
             <span className="mt-3 block">Keyword for SERP check</span>
             <select className="input mt-1 w-full" value={primaryIdx} onChange={(e) => setPrimaryIdx(Number(e.target.value))}>
