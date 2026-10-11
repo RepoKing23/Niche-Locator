@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import CityPicker from "./CityPicker";
+import CityPicker, { DEFAULT_MAX_POP } from "./CityPicker";
 import DataTable, { type ActionContext } from "./DataTable";
 import SaveToList from "./SaveToList";
 import SnapshotPanel from "./SnapshotPanel";
@@ -16,7 +16,8 @@ import { getStore } from "@/lib/store";
 import type { CityRow, KeywordMetrics, NicheSnapshot, OrganicMode, Report, SavedReportMeta, SerpInfo } from "@/lib/types";
 
 const CITY_SELECTION_KEY = "niche-locator:selected-cities";
-const DEFAULT_CITY_IDS = CITIES.slice(0, 50).map((c) => c.id);
+// The 50 largest cities under 1M people: big enough to have ad spend, small enough to rank in.
+const DEFAULT_CITY_IDS = CITIES.filter((c) => c.population <= DEFAULT_MAX_POP).slice(0, 50).map((c) => c.id);
 
 type Progress = { label: string; done: number; total: number };
 
@@ -232,7 +233,7 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
 
   const run = async () => {
     setError("");
-    if (cleanKeyword(niche).length < 2) return setError("Enter a niche, e.g. “stairway installer”.");
+    if (cleanKeyword(niche).length < 2) return setError("Enter a niche, e.g. “garage door repair”.");
     if (!variants.length) return setError("Add at least one keyword variant.");
     if (!cityIds.length) return setError("Select at least one city.");
     if (mode === "live" && estCost > 5 && !window.confirm(`This run checks ${cityIds.length.toLocaleString()} cities and costs about $${estCost.toFixed(2)}. Continue?`)) return;
@@ -404,7 +405,7 @@ export default function NicheLocator({ mode }: { mode: "live" | "demo" }) {
         <div className="grid gap-4 md:grid-cols-3">
           <label className="block text-sm font-medium">
             Niche
-            <input className="input mt-1 w-full text-base" placeholder="e.g. stairway installer" value={niche}
+            <input className="input mt-1 w-full text-base" placeholder="e.g. garage door repair" value={niche}
               onChange={(e) => onNicheChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !busy && run()} />
             <span className="mt-3 block">Keyword for SERP check</span>
             <select className="input mt-1 w-full" value={primaryIdx} onChange={(e) => setPrimaryIdx(Number(e.target.value))}>

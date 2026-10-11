@@ -14,7 +14,10 @@ The app covers about **4,300 US local-service markets**: every place with 10,000
 excluded, and DC counts as one market. Under **Cities to research** you pick exactly which ones to run
 before any credits are spent:
 
-- Filter by state, market size (**Major** 250k+, **Mid** 50k–250k, **Small** under 50k), minimum population or name
+- Filter by state, market size (**Major** 250k+, **Mid** 50k–250k, **Small** under 50k), min / max population or name
+- The picker starts at **Under 1M** people, since giant metros are rarely winnable. One-click ranges:
+  10k–50k, 50k–100k, 100k–250k, 250k–500k, 500k–1M, 250k–1M, 1M+ and Any. The default selection is the 50 largest
+  cities under 1M
 - **Top N per state**, **Select all shown**, per-state checkboxes, or tick individual cities
 - The selection and the cost estimate update live, and your last selection is remembered
 
@@ -193,12 +196,15 @@ their own lists and reports (enforced by row-level security in the database).
      (this repo has no `main` yet). The integration applies `supabase/migrations/*.sql` when that branch changes, or
    - paste each file in `supabase/migrations/` in order (`20260929…_keyword_lists.sql`,
      `20260930…_api_cache.sql`, `20261001…_api_cache_ads.sql`) into the Supabase **SQL Editor** and run it.
-2. **Keys:** from Project Settings → API, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+2. **Keys:** from Project Settings → API, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable key; `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` also works)
    in `.env.local` (and in Vercel's environment variables).
 3. **Auth:** Authentication → Providers → Email is on by default. Under Authentication → URL Configuration,
-   set the Site URL to your app's URL and add `https://<your-app>/auth/callback` (and
-   `http://localhost:3000/auth/callback`) to Redirect URLs, for magic links and email confirmation.
+   set the Site URL to your app's URL and add `https://<your-app>/auth/callback**` (and
+   `http://localhost:3000/auth/callback**`) to Redirect URLs, for magic links, email confirmation and password
+   resets (the `**` lets the link carry the page to return to).
 4. Restart the app. You'll be sent to `/login`: create an account, confirm your email, and sign in.
+   Forgot your password? Use **Forgot password?** on the sign-in page; the email link opens **Account**, where
+   you set a new one. Click your email in the top bar to open Account any time (change password, sign out).
    To keep it private, turn off new signups after creating your account (Authentication → Providers → Email →
    *Allow new users to sign up*).
 

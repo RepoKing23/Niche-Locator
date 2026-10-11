@@ -1,3 +1,4 @@
+import Link from "next/link";
 import NavTabs from "./NavTabs";
 import SignOutButton from "./SignOutButton";
 import { supabaseConfigured } from "@/lib/supabase/config";
@@ -18,7 +19,7 @@ export default async function AppHeader() {
       <div className="flex items-center gap-3 text-sm">
         {supabaseConfigured ? (
           <>
-            <span className="text-zinc-600 dark:text-zinc-400">{email}</span>
+            <Link href="/account" className="text-zinc-600 hover:underline dark:text-zinc-400" title="Account settings">{email}</Link>
             <SignOutButton />
           </>
         ) : (
