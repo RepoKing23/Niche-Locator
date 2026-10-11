@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import CityPicker from "./CityPicker";
+import CityPicker, { DEFAULT_MAX_POP } from "./CityPicker";
 import DataTable, { type ActionContext } from "./DataTable";
 import SaveToList from "./SaveToList";
 import SnapshotPanel from "./SnapshotPanel";
@@ -16,7 +16,8 @@ import { getStore } from "@/lib/store";
 import type { CityRow, KeywordMetrics, NicheSnapshot, OrganicMode, Report, SavedReportMeta, SerpInfo } from "@/lib/types";
 
 const CITY_SELECTION_KEY = "niche-locator:selected-cities";
-const DEFAULT_CITY_IDS = CITIES.slice(0, 50).map((c) => c.id);
+// The 50 largest cities under 1M people: big enough to have ad spend, small enough to rank in.
+const DEFAULT_CITY_IDS = CITIES.filter((c) => c.population <= DEFAULT_MAX_POP).slice(0, 50).map((c) => c.id);
 
 type Progress = { label: string; done: number; total: number };
 

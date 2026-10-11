@@ -14,7 +14,10 @@ The app covers about **4,300 US local-service markets**: every place with 10,000
 excluded, and DC counts as one market. Under **Cities to research** you pick exactly which ones to run
 before any credits are spent:
 
-- Filter by state, market size (**Major** 250k+, **Mid** 50k–250k, **Small** under 50k), minimum population or name
+- Filter by state, market size (**Major** 250k+, **Mid** 50k–250k, **Small** under 50k), min / max population or name
+- The picker starts at **Under 1M** people, since giant metros are rarely winnable. One-click ranges:
+  10k–50k, 50k–100k, 100k–250k, 250k–500k, 500k–1M, 250k–1M, 1M+ and Any. The default selection is the 50 largest
+  cities under 1M
 - **Top N per state**, **Select all shown**, per-state checkboxes, or tick individual cities
 - The selection and the cost estimate update live, and your last selection is remembered
 

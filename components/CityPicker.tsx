@@ -13,8 +13,12 @@ type Props = {
 const TIERS: Tier[] = ["Major", "Mid", "Small"];
 
 const POP_PRESETS = [10000, 25000, 50000, 100000, 150000, 250000, 500000, 1000000];
+/** Most opportunities are in cities under 1M, so the picker starts there and the ranges stop at 1M. */
+export const DEFAULT_MAX_POP = 1000000;
 const RANGES: [string, number, number][] = [
-  ["Any", 0, 0], ["10k–50k", 10000, 50000], ["25k–150k", 25000, 150000], ["50k–250k", 50000, 250000], ["250k+", 250000, 0],
+  ["Under 1M", 0, DEFAULT_MAX_POP], ["10k–50k", 10000, 50000], ["50k–100k", 50000, 100000], ["100k–250k", 100000, 250000],
+  ["250k–500k", 250000, 500000], ["500k–1M", 500000, DEFAULT_MAX_POP], ["250k–1M", 250000, DEFAULT_MAX_POP],
+  ["1M+", DEFAULT_MAX_POP + 1, 0], ["Any", 0, 0],
 ];
 const k = (n: number) => (n >= 1e6 ? `${n / 1e6}M` : `${n / 1000}k`);
 
@@ -34,7 +38,7 @@ export default function CityPicker({ selected, onChange, footer }: Props) {
   const [tiers, setTiers] = useState<Tier[]>([]);
   // 0 = no limit.
   const [minPop, setMinPop] = useState(0);
-  const [maxPop, setMaxPop] = useState(0);
+  const [maxPop, setMaxPop] = useState(DEFAULT_MAX_POP);
   const [topN, setTopN] = useState(10);
   const [open, setOpen] = useState<Set<string>>(new Set());
 
@@ -118,7 +122,7 @@ export default function CityPicker({ selected, onChange, footer }: Props) {
               <button key={t} type="button"
                 onClick={() => setTiers((ts) => (ts.includes(t) ? ts.filter((x) => x !== t) : [...ts, t]))}
                 className={`rounded px-2 py-1.5 text-xs ${tiers.includes(t) ? "bg-sky-600 text-white" : "bg-zinc-100 dark:bg-zinc-800"}`}
-                title={t === "Major" ? "250k+ people" : t === "Mid" ? "50k–250k" : "Under 50k"}>
+                title={t === "Major" ? "250k+ people (combine with Max population to cap it)" : t === "Mid" ? "50k–250k" : "Under 50k"}>
                 {t}
               </button>
             ))}
