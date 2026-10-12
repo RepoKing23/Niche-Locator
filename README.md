@@ -205,6 +205,10 @@ their own lists and reports (enforced by row-level security in the database).
 4. Restart the app. You'll be sent to `/login`: create an account, confirm your email, and sign in.
    Forgot your password? Use **Forgot password?** on the sign-in page; the email link opens a **Set a new
    password** page, and the app stays locked until you choose one. Click your email in the top bar to open Account any time (change password, sign out).
+   **Emails:** Supabase's built-in email sender only allows a few auth emails per hour for the whole project
+   (signup confirmations, sign-in links and password resets share it), so testing quickly shows
+   "email rate limit exceeded". For real use, add your own SMTP provider (e.g. Resend, Brevo, SendGrid) under
+   Authentication → Emails → SMTP Settings, then raise the limit under Authentication → Rate Limits.
    To keep it private, turn off new signups after creating your account (Authentication → Providers → Email →
    *Allow new users to sign up*).
 

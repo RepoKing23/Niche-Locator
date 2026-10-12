@@ -21,6 +21,15 @@ const SUBMIT_LABEL: Record<Mode, string> = {
   forgot: "Send reset link",
 };
 
+/** Supabase's own wording for these is terse; say what the user can actually do. */
+function friendlyError(err: unknown): string {
+  const { code, message } = err as { code?: string; message?: string };
+  if (code === "over_email_send_rate_limit" || /email rate limit/i.test(message ?? ""))
+    return "Too many emails were sent recently. Wait a while (up to an hour) and try again. If you already have an account, sign in with your password instead.";
+  if (code === "over_request_rate_limit") return "Too many attempts. Wait a minute and try again.";
+  return message ?? "Something went wrong. Please try again.";
+}
+
 /** `next` is where to go after signing in (already checked by safeNext). */
 export default function LoginForm({ next = "/", initialError = "" }: { next?: string; initialError?: string }) {
   const [mode, setMode] = useState<Mode>("signin");
@@ -73,7 +82,7 @@ export default function LoginForm({ next = "/", initialError = "" }: { next?: st
         setMessage("If that email has an account, a link to set a new password is on its way.");
       }
     } catch (err) {
-      setError((err as Error).message);
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }
