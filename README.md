@@ -98,6 +98,8 @@ usually empty for city-level keywords, so the live SERP is the better signal.
 - **Choose your columns:** hover a column header and click **✕** to hide it, or use **Columns (shown/total) ▾**
   (Show all, Hide all, Default columns, tick boxes). Copy, Copy values only, CSV and Excel table exports include
   only the shown columns. Your choice is remembered per tab (Research, Keyword Check, Keyword Lists) in this browser.
+  **Reorder columns** by dragging a column header, or in **Columns ▾** by dragging a row or using ↑ ↓
+  (**Default order** resets it). The order is remembered per tab and used for Copy / CSV / Excel.
 - **Copy values only** copies just the cell values (no header row), handy for pasting into an existing sheet
 - **Copy** puts tab-separated rows on the clipboard, so they paste into Sheets/Excel as columns. **Export CSV** and **Export table (Excel)** download only the table.
 - Table exports include only the visible columns and follow your current filters and sort

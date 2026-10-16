@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { COLUMNS, type Column } from "./columns";
+import { mergeOrder, moveKey } from "@/lib/columnOrder";
 import { downloadBlob, slugify, toCsv, toTsv, type Cell } from "@/lib/export";
 import type { CityRow, OrganicLabel, Verdict } from "@/lib/types";
 
@@ -62,6 +63,7 @@ type Props = {
 };
 
 const COLUMNS_KEY = (name: string) => `niche-locator:columns:${name}`;
+const ORDER_KEY = (name: string) => `${COLUMNS_KEY(name)}:order`;
 
 type Sort = { key: string; dir: "asc" | "desc" };
 
@@ -69,7 +71,7 @@ type Sort = { key: string; dir: "asc" | "desc" };
  * View settings per table (storageKey) kept for the whole session, so a new run / new keywords /
  * another list keep your hidden columns, filters and sort — even if browser storage is blocked.
  */
-const sessionViews = new Map<string, { visible: string[]; filters: Filters; sort: Sort }>();
+const sessionViews = new Map<string, { visible: string[]; order: string[]; filters: Filters; sort: Sort }>();
 
 /** Columns added after column choices started being saved; shown once to people with saved choices. */
 const ADDED_LATER = ["areaCode", "adsCount"];
@@ -93,6 +95,17 @@ function loadVisible(name: string | undefined, fallback: string[], known: Set<st
   return new Set(fallback);
 }
 
+function loadOrder(name: string | undefined, defaults: string[]): string[] {
+  if (!name) return defaults;
+  const mem = sessionViews.get(name);
+  if (mem) return mergeOrder(mem.order, defaults);
+  try {
+    return mergeOrder(JSON.parse(localStorage.getItem(ORDER_KEY(name)) ?? "null") as string[] | null, defaults);
+  } catch {
+    return defaults;
+  }
+}
+
 export default function DataTable({ rows, exportName, extraColumns = [], searchText, actions, storageKey }: Props) {
   const allColumns = useMemo(() => [...extraColumns, ...COLUMNS], [extraColumns]);
   const defaultVisible = useMemo(() => allColumns.filter((c) => c.defaultVisible).map((c) => c.key), [allColumns]);
@@ -102,6 +115,23 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
     const all = [...extraColumns, ...COLUMNS];
     return loadVisible(storageKey, all.filter((c) => c.defaultVisible).map((c) => c.key), new Set(all.map((c) => c.key)));
   });
+  const defaultOrder = useMemo(() => allColumns.map((c) => c.key), [allColumns]);
+  const [order, setOrderState] = useState<string[]>(() => loadOrder(storageKey, [...extraColumns, ...COLUMNS].map((c) => c.key)));
+  /** Update the column order and remember it for next time. */
+  const setOrder = (next: string[]) => {
+    setOrderState(next);
+    if (!storageKey) return;
+    try {
+      localStorage.setItem(ORDER_KEY(storageKey), JSON.stringify(next));
+    } catch {
+      // per-browser convenience only
+    }
+  };
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const dropOn = (target: string) => {
+    if (dragKey && dragKey !== target) setOrder(moveKey(mergeOrder(order, defaultOrder), dragKey, { target }));
+    setDragKey(null);
+  };
   /** Update shown columns and remember the choice for next time. */
   const setVisible = (next: Set<string> | ((v: Set<string>) => Set<string>)) => {
     setVisibleState((prev) => {
@@ -119,8 +149,8 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
   };
   // Remember this table's view for the session (survives new results, which rebuild the table).
   useEffect(() => {
-    if (storageKey) sessionViews.set(storageKey, { visible: [...visible], filters, sort });
-  }, [storageKey, visible, filters, sort]);
+    if (storageKey) sessionViews.set(storageKey, { visible: [...visible], order, filters, sort });
+  }, [storageKey, visible, order, filters, sort]);
 
   const hideColumn = (key: string) => setVisible((v) => {
     const n = new Set(v);
@@ -134,7 +164,11 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
   const [showColumns, setShowColumns] = useState(false);
 
   const states = useMemo(() => [...new Set(rows.map((r) => r.stateCode))].sort(), [rows]);
-  const columns = allColumns.filter((c) => visible.has(c.key));
+  const orderedColumns = useMemo(() => {
+    const byKey = new Map(allColumns.map((c) => [c.key, c]));
+    return mergeOrder(order, defaultOrder).map((k) => byKey.get(k)!);
+  }, [allColumns, order, defaultOrder]);
+  const columns = orderedColumns.filter((c) => visible.has(c.key));
 
   const filtered = useMemo(() => {
     const f = filters;
@@ -327,16 +361,24 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
             </button>
             {showColumns && (
               <div className="absolute right-0 z-20 mt-1 w-64 rounded-md border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
-                <p className="mb-2 text-xs text-zinc-500">Copy, CSV and Excel include only the ticked columns, in this order.</p>
+                <p className="mb-2 text-xs text-zinc-500">
+                  Copy, CSV and Excel include only the ticked columns, in this order. Drag a column (here or its header in
+                  the table) or use ↑ ↓ to reorder.
+                </p>
                 <div className="mb-2 flex flex-wrap gap-1">
                   <button className="btn px-2 py-0.5 text-xs" onClick={() => setVisible(new Set(allColumns.map((c) => c.key)))}>Show all</button>
                   <button className="btn px-2 py-0.5 text-xs" onClick={() => setVisible(new Set())}>Hide all</button>
                   <button className="btn px-2 py-0.5 text-xs" onClick={() => setVisible(new Set(defaultVisible))}>Default columns</button>
+                  <button className="btn px-2 py-0.5 text-xs" onClick={() => setOrder(defaultOrder)}>Default order</button>
                   <button className="btn ml-auto px-2 py-0.5 text-xs" onClick={() => setShowColumns(false)}>Done</button>
                 </div>
                 <div className="max-h-72 overflow-auto">
-                {allColumns.map((c) => (
-                  <label key={c.key} className="flex items-center gap-2 py-0.5 text-sm">
+                {orderedColumns.map((c, i) => (
+                  <div key={c.key} draggable onDragStart={() => setDragKey(c.key)} onDragEnd={() => setDragKey(null)}
+                    onDragOver={(e) => e.preventDefault()} onDrop={() => dropOn(c.key)}
+                    className={`flex cursor-grab items-center gap-1 rounded py-0.5 text-sm ${dragKey === c.key ? "opacity-40" : ""} ${dragKey && dragKey !== c.key ? "hover:bg-sky-50 dark:hover:bg-sky-900/30" : ""}`}>
+                  <span className="text-zinc-400" aria-hidden>⠿</span>
+                  <label className="flex flex-1 items-center gap-2">
                     <input type="checkbox" checked={visible.has(c.key)}
                       onChange={() => setVisible((v) => {
                         const n = new Set(v);
@@ -346,6 +388,13 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
                       })} />
                     {c.label}
                   </label>
+                  <button type="button" className="px-1 text-zinc-500 hover:text-zinc-900 disabled:opacity-20 dark:hover:text-zinc-100"
+                    aria-label={`Move ${c.label} up`} title="Move left / up" disabled={i === 0}
+                    onClick={() => setOrder(moveKey(mergeOrder(order, defaultOrder), c.key, { offset: -1 }))}>↑</button>
+                  <button type="button" className="px-1 text-zinc-500 hover:text-zinc-900 disabled:opacity-20 dark:hover:text-zinc-100"
+                    aria-label={`Move ${c.label} down`} title="Move right / down" disabled={i === orderedColumns.length - 1}
+                    onClick={() => setOrder(moveKey(mergeOrder(order, defaultOrder), c.key, { offset: 1 }))}>↓</button>
+                  </div>
                 ))}
                 </div>
               </div>
@@ -365,8 +414,10 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
                   checked={allSelected} onChange={toggleAll} />
               </th>
               {columns.map((c) => (
-                <th key={c.key} title={c.help} onClick={() => toggleSort(c)}
-                  className={`group cursor-pointer select-none whitespace-nowrap px-2 py-2 font-semibold ${c.numeric ? "text-right" : "text-left"}`}>
+                <th key={c.key} title={`${c.help}\n\nClick to sort · drag to move the column`} onClick={() => toggleSort(c)}
+                  draggable onDragStart={() => setDragKey(c.key)} onDragEnd={() => setDragKey(null)}
+                  onDragOver={(e) => e.preventDefault()} onDrop={() => dropOn(c.key)}
+                  className={`group cursor-pointer select-none whitespace-nowrap px-2 py-2 font-semibold ${c.numeric ? "text-right" : "text-left"} ${dragKey === c.key ? "opacity-40" : ""} ${dragKey && dragKey !== c.key ? "hover:bg-sky-50 dark:hover:bg-sky-900/30" : ""}`}>
                   {c.label}{sort.key === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}
                   <button type="button" aria-label={`Hide ${c.label} column`} title={`Hide “${c.label}” (bring it back under Columns ▾)`}
                     onClick={(e) => { e.stopPropagation(); hideColumn(c.key); }}
