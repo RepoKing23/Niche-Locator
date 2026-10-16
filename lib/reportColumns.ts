@@ -17,6 +17,10 @@ export type ColumnDef = {
   numFmt?: string;
   /** Value used for sorting and export. */
   value: (r: CityRow) => Cell;
+  /** Sort by this instead of `value` (e.g. LOW/MEDIUM/HIGH by the underlying 0-100 number). */
+  sortValue?: (r: CityRow) => Cell;
+  /** Direction of the first click on the header (default: numbers high→low, text A→Z). */
+  firstSort?: "asc" | "desc";
 };
 
 const USD = "$#,##0.00";
@@ -34,6 +38,11 @@ export const COLUMN_DEFS: ColumnDef[] = [
   { key: "verdict", label: "Verdict", defaultVisible: true,
     help: "Target = Ads Score ≥ 60 and Organic Ease ≥ 60 (high Google Ads, low organic competition). Target? = same but organic is only estimated — confirm with a SERP check. Ads only = advertisers pay but organic is hard. Easy, low value = easy organic but weak ads.",
     value: (r) => r.verdict ?? null },
+  { key: "competition", label: "Ads Comp.", defaultVisible: true,
+    help: "How many advertisers bid on this keyword (Google Keyword Planner, past months) — not a live count of ads on the page. HIGH = strong ads market.",
+    value: (r) => r.competition, sortValue: (r) => r.competitionIndex, firstSort: "desc" },
+  { key: "organic", label: "Organic Comp.", defaultVisible: true, help: "Organic competition from organic difficulty: Low < 30 ≤ Medium < 60 ≤ High. Low = easy to rank.",
+    value: (r) => r.organic, sortValue: (r) => r.organicDifficulty, firstSort: "asc" },
   { key: "adsScore", label: "Ads Score", numeric: true, defaultVisible: true,
     help: "0-100 Google Ads value: 50% CPC (log, $50 max) + 30% ads competition + 20% paid ads seen on a SERP check (only when ads were seen — 0 seen is ignored because Google often hides ads from automated checks).",
     value: (r) => r.adsScore ?? null },
@@ -68,9 +77,6 @@ export const COLUMN_DEFS: ColumnDef[] = [
     help: "Low top-of-page bid (USD)", value: (r) => r.lowBid },
   { key: "highBid", label: "Bid High", numeric: true, defaultVisible: true, numFmt: USD,
     help: "High top-of-page bid (USD)", value: (r) => r.highBid },
-  { key: "competition", label: "Ads Comp. (Planner)", defaultVisible: true,
-    help: "How many advertisers bid on this keyword (Google Keyword Planner, past months) — not a live count of ads on the page.",
-    value: (r) => r.competition },
   { key: "competitionIndex", label: "Ads Index", numeric: true, defaultVisible: true,
     help: "Keyword Planner competition index 0-100 (higher = more advertisers bidding over past months)", value: (r) => r.competitionIndex },
   { key: "organicDifficulty", label: "Organic Diff.", numeric: true, defaultVisible: true,
@@ -79,8 +85,6 @@ export const COLUMN_DEFS: ColumnDef[] = [
   { key: "organicSource", label: "Organic Source", defaultVisible: false,
     help: "Live SERP = checked in Google for that city; City KD = DataForSEO keyword difficulty for \"keyword + city\"; Estimated = from niche difficulty and city size",
     value: (r) => organicSourceOf(r) },
-  { key: "organic", label: "Organic Comp.", defaultVisible: true, help: "Low < 30 ≤ Medium < 60 ≤ High",
-    value: (r) => r.organic },
   { key: "weakResults", label: "Weak in Top 10", numeric: true, defaultVisible: true,
     help: "Directories, job boards, social, big-box and generic sites in the organic top 10 — easy to outrank.",
     value: (r) => r.weakResults },

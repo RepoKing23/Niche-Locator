@@ -159,7 +159,7 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
         return true;
       })
       .sort((a, b) =>
-        compare(col.value(a), col.value(b), sort.dir === "asc" ? 1 : -1) ||
+        compare((col.sortValue ?? col.value)(a), (col.sortValue ?? col.value)(b), sort.dir === "asc" ? 1 : -1) ||
         // Ties: higher Ads Score first — the goal is high ads value.
         compare(a.adsScore ?? null, b.adsScore ?? null, -1));
   }, [rows, filters, sort, allColumns, searchText]);
@@ -211,7 +211,7 @@ export default function DataTable({ rows, exportName, extraColumns = [], searchT
   };
 
   const toggleSort = (c: Column) =>
-    setSort((s) => (s.key === c.key ? { key: c.key, dir: s.dir === "asc" ? "desc" : "asc" } : { key: c.key, dir: c.numeric ? "desc" : "asc" }));
+    setSort((s) => (s.key === c.key ? { key: c.key, dir: s.dir === "asc" ? "desc" : "asc" } : { key: c.key, dir: c.firstSort ?? (c.numeric ? "desc" : "asc") }));
 
   const allSelected = filtered.length > 0 && selectedRows.length === filtered.length;
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(filtered.map((r) => r.id)));
