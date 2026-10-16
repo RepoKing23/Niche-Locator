@@ -126,7 +126,8 @@ keyword list, and are cached for 30 days, so re-checking the same keywords in th
 **Keyword ideas** panel next to the field shows long-tail suggestions that contain it and related searches (tagged
 *rel*), with US volume, CPC and keyword difficulty. Tick ideas and click **Add selected**, or **Add all**. Use the
 **for** menu to see ideas for another keyword in the field. Ideas cost ~$0.03 per keyword (DataForSEO Labs) and are
-cached for 30 days; untick **Auto** to fetch them only when you click.
+cached for 30 days; untick **Auto** to fetch them only when you click. The **Ads** column is the Google Ads competition
+level: **High** means many advertisers bid on the keyword (a strong ads market).
 
 **Templates.** **Save field as template…** stores the keywords in the field under a name (saving the same name again
 replaces it). Pick a template and click **Load** (replace the field) or **Add** (append). Templates are private to your

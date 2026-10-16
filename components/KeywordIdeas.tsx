@@ -18,6 +18,21 @@ function readAuto() {
   }
 }
 
+const ADS_TONE = {
+  HIGH: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+  MEDIUM: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+  LOW: "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200",
+} as const;
+
+/** Ads competition badge: High = many advertisers bid on it (a strong ads market). */
+function AdsLevel({ idea }: { idea: KeywordIdea }) {
+  // Ideas cached before this column existed have no competition field.
+  if (!idea.competition) return <span title="No Google Ads competition data">–</span>;
+  const label = idea.competition === "MEDIUM" ? "Med" : idea.competition === "HIGH" ? "High" : "Low";
+  const title = `Google Ads competition ${idea.competitionIndex ?? "?"}/100${idea.cpc != null ? ` · CPC $${idea.cpc.toFixed(2)}` : ""}`;
+  return <span className={`rounded px-1 text-[10px] font-medium ${ADS_TONE[idea.competition]}`} title={title}>{label}</span>;
+}
+
 type State = { seed: string; ideas: KeywordIdea[] | null; error: string; cached: boolean };
 
 /**
@@ -133,6 +148,7 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
                 <th className="font-normal">Keyword</th>
                 <th className="text-right font-normal" title="US monthly searches">Vol.</th>
                 <th className="text-right font-normal">CPC</th>
+                <th className="text-right font-normal" title="Google Ads competition: how many advertisers bid on this keyword">Ads</th>
                 <th className="text-right font-normal" title="Keyword difficulty (0–100)">KD</th>
               </tr>
             </thead>
@@ -150,6 +166,7 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
                     </td>
                     <td className="text-right tabular-nums">{i.searchVolume?.toLocaleString() ?? "–"}</td>
                     <td className="text-right tabular-nums">{i.cpc != null ? `$${i.cpc.toFixed(2)}` : "–"}</td>
+                    <td className="text-right"><AdsLevel idea={i} /></td>
                     <td className="text-right tabular-nums">{i.difficulty ?? "–"}</td>
                   </tr>
                 );

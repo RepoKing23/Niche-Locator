@@ -291,7 +291,7 @@ function groupBy<T>(items: T[], key: (t: T) => string): T[][] {
 /** Suggestions + related keywords for one seed keyword (cache first; ideas are US-wide). */
 export async function getKeywordIdeas(seed: string, opts: FetchOptions): Promise<{ ideas: KeywordIdea[]; cost: number; cached: boolean }> {
   // Cached under "kd" with a distinct key prefix (same pattern as Keyword Check's "checklabs:" keys).
-  const keys = new Map([[seed, `ideas:${seed}`]]);
+  const keys = new Map([[seed, `ideas2:${seed}`]]); // v2: ideas include ads competition
   const hit = (await fromCache<KeywordIdea[]>(opts, "kd", keys)).get(seed);
   if (hit) return { ideas: hit, cost: 0, cached: true };
   const r = await postJson<{ ideas: KeywordIdea[]; cost: number }>("/api/suggest", { keyword: seed });

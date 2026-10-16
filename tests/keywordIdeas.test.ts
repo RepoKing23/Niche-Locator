@@ -9,7 +9,7 @@ describe("keyword ideas", () => {
       "stair lift",
       [
         { keyword: "Stair Lift", keyword_info: { search_volume: 9000 } },
-        { keyword: "stair lift cost", keyword_info: { search_volume: 2400, cpc: 6.5 }, keyword_properties: { keyword_difficulty: 31 } },
+        { keyword: "stair lift cost", keyword_info: { search_volume: 2400, cpc: 6.5, competition: 0.95, competition_level: "HIGH" }, keyword_properties: { keyword_difficulty: 31 } },
         { keyword: "a b c d e f g h i j k stair lift", keyword_info: { search_volume: 10 } },
       ],
       [
@@ -19,8 +19,8 @@ describe("keyword ideas", () => {
       ],
     );
     expect(ideas).toEqual([
-      { keyword: "stair lift cost", kind: "suggestion", searchVolume: 2400, cpc: 6.5, difficulty: 31 },
-      { keyword: "chair lift for stairs", kind: "related", searchVolume: 1900, cpc: null, difficulty: null },
+      { keyword: "stair lift cost", kind: "suggestion", searchVolume: 2400, cpc: 6.5, competition: "HIGH", competitionIndex: 95, difficulty: 31 },
+      { keyword: "chair lift for stairs", kind: "related", searchVolume: 1900, cpc: null, competition: null, competitionIndex: null, difficulty: null },
     ]);
   });
 

@@ -434,6 +434,9 @@ export type KeywordIdea = {
   kind: "suggestion" | "related";
   searchVolume: number | null;
   cpc: number | null;
+  /** Google Ads competition: how many advertisers bid on it (LOW/MEDIUM/HIGH, index 0-100). */
+  competition: Competition | null;
+  competitionIndex: number | null;
   difficulty: number | null;
 };
 
@@ -444,6 +447,8 @@ const toIdea = (i: LabsOverviewItem, kind: KeywordIdea["kind"]): KeywordIdea => 
   kind,
   searchVolume: i.keyword_info?.search_volume ?? null,
   cpc: i.keyword_info?.cpc ?? null,
+  competition: i.keyword_info?.competition_level ?? null,
+  competitionIndex: i.keyword_info?.competition == null ? null : Math.round(i.keyword_info.competition * 100),
   difficulty: i.keyword_properties?.keyword_difficulty ?? null,
 });
 

@@ -121,6 +121,11 @@ export function mockKeywordIdeas(seed: string) {
       kind: (i < 6 ? "suggestion" : "related") as "suggestion" | "related",
       searchVolume: r < 0.15 ? null : Math.round((50 + r * 2000) / 10) * 10,
       cpc: Math.round((2 + rand(`${keyword}|cpc`) * 30) * 100) / 100,
+      ...(() => {
+        const competitionIndex = Math.round(rand(`${keyword}|comp`) * 100);
+        const competition: Competition = competitionIndex >= 67 ? "HIGH" : competitionIndex >= 34 ? "MEDIUM" : "LOW";
+        return { competition, competitionIndex };
+      })(),
       difficulty: Math.round(rand(`${keyword}|kd`) * 60),
     };
   });
