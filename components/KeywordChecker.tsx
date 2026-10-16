@@ -182,7 +182,7 @@ export default function KeywordChecker({ mode }: { mode: "live" | "demo" }) {
               </span>
             </label>
             <KeywordIdeas seed={ideaSeed} seeds={parsed.valid} existing={existing} onSeedChange={setIdeaSeed}
-              onAdd={(ks) => addKeywords(ks)} mode={mode} />
+              onAdd={(ks) => addKeywords(ks)} mode={mode} city={city} source={source} />
           </div>
         </div>
         <div className="flex flex-col gap-3">

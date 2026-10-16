@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PRICES } from "@/lib/api";
-import type { KeywordIdea } from "@/lib/dataforseo";
-import { getKeywordIdeas } from "@/lib/fetchers";
+import type { City } from "@/lib/cities";
+import type { AdsSource, KeywordIdea } from "@/lib/dataforseo";
+import { getKeywordCheck, getKeywordIdeas, type KeywordCheckData } from "@/lib/fetchers";
 import { organicLabel } from "@/lib/scoring";
 import { getStore } from "@/lib/store";
 
@@ -12,6 +13,30 @@ const AUTO_KEY = "niche-locator:auto-ideas";
 const SHOW_ROWS = 20;
 /** Two Labs requests (suggestions + related, each billed ~$0.0125 in practice) and up to 30 ideas each. */
 const IDEAS_COST = 2 * (PRICES.labsRequest + 0.0025) + 60 * PRICES.labsKeyword;
+
+/** Same estimate as Keyword Check for n keywords in one city. */
+const cityCost = (source: AdsSource, n: number) => source === "labs"
+  ? Math.ceil(n / 700) * PRICES.labsRequest + n * PRICES.labsKeyword
+  : PRICES.cityAdsRequest + PRICES.kdRequest + n * PRICES.kdKeyword;
+
+/**
+ * Ideas with the numbers a Keyword Check in the city would show (same fetcher, same cache), so what the
+ * panel shows is what the check finds. `noData` = Google has nothing for the keyword there.
+ */
+export function withCityData(ideas: KeywordIdea[], d: Pick<KeywordCheckData, "ads" | "kd">): (KeywordIdea & { noData?: boolean })[] {
+  return ideas.map((i) => {
+    const m = d.ads[i.keyword] ?? null;
+    return {
+      ...i,
+      searchVolume: m?.searchVolume ?? null,
+      cpc: m?.cpc ?? null,
+      competition: m?.competition ?? null,
+      competitionIndex: m?.competitionIndex ?? null,
+      difficulty: d.kd[i.keyword] ?? null,
+      noData: !m,
+    };
+  });
+}
 
 function readAuto() {
   try {
@@ -66,7 +91,7 @@ const SORT_VALUE: Record<SortKey, (i: KeywordIdea) => string | number | null> = 
 };
 
 /** Sorted copy; keywords without a value always go last. */
-export function sortIdeas(ideas: KeywordIdea[], sort: Sort): KeywordIdea[] {
+export function sortIdeas<T extends KeywordIdea>(ideas: T[], sort: Sort): T[] {
   if (!sort) return ideas;
   const get = SORT_VALUE[sort.key];
   const sign = sort.dir === "asc" ? 1 : -1;
@@ -79,12 +104,13 @@ export function sortIdeas(ideas: KeywordIdea[], sort: Sort): KeywordIdea[] {
 }
 
 type State = { seed: string; ideas: KeywordIdea[] | null; error: string; cached: boolean };
+type CityState = { key: string; data: KeywordCheckData | null; error: string };
 
 /**
  * Side panel of keyword ideas (long-tail suggestions + related searches) for one keyword in the field.
  * The seed follows the last keyword added; ideas can be ticked and added to the field.
  */
-export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAdd, mode }: {
+export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAdd, mode, city, source }: {
   seed: string | null;
   /** Keywords currently in the field, offered as seeds. */
   seeds: string[];
@@ -92,6 +118,9 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
   onSeedChange: (seed: string) => void;
   onAdd: (keywords: string[]) => void;
   mode: "live" | "demo";
+  /** Target city: ideas are re-checked there the same way Keyword Check does. */
+  city: City | null;
+  source: AdsSource;
 }) {
   const [auto, setAuto] = useState(true);
   const [state, setState] = useState<State | null>(null);
@@ -100,6 +129,10 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
   const [spent, setSpent] = useState(0);
   const [sort, setSort] = useState<Sort>(null);
   const [showAll, setShowAll] = useState(false);
+  const [cityState, setCityState] = useState<CityState | null>(null);
+  const [view, setView] = useState<"city" | "us">("city");
+  const [hideNoData, setHideNoData] = useState(true);
+  const cityMemo = useRef(new Map<string, KeywordCheckData>());
   // Ideas already loaded this session, so switching back to a seed is instant and free.
   const memo = useRef(new Map<string, { ideas: KeywordIdea[]; cached: boolean }>());
 
@@ -141,7 +174,40 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
   };
 
   const loaded = state?.seed === seed ? state.ideas : null;
-  const ideas = useMemo(() => sortIdeas(loaded ?? [], sort), [loaded, sort]);
+  const cityKey = loaded && city ? `${seed}|${city.id}|${source}` : null;
+  const cityLabel = city ? `${city.name}, ${city.stateCode}` : "";
+
+  const loadCity = async (key: string, keywords: string[], c: City) => {
+    const known = cityMemo.current.get(key);
+    if (known) return setCityState({ key, data: known, error: "" });
+    setCityState({ key, data: null, error: "" });
+    try {
+      const d = await getKeywordCheck(keywords, c.id, { store: getStore(), source });
+      cityMemo.current.set(key, d);
+      setSpent((x) => x + d.cost);
+      setCityState((prev) => (prev?.key === key ? { key, data: d, error: "" } : prev));
+    } catch (e) {
+      setCityState((prev) => (prev?.key === key ? { key, data: null, error: (e as Error).message } : prev));
+    }
+  };
+
+  useEffect(() => {
+    if (!cityKey || !city || !loaded?.length || cityState?.key === cityKey) return;
+    if (auto || cityMemo.current.has(cityKey)) void loadCity(cityKey, loaded.map((i) => i.keyword), city);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cityKey, auto]);
+
+  const cityData = cityKey && cityState?.key === cityKey ? cityState.data : null;
+  const showCity = view === "city" && Boolean(cityData);
+  const shown = useMemo(() => {
+    if (!loaded) return [];
+    return showCity && cityData ? withCityData(loaded, cityData) : loaded.map((i) => ({ ...i, noData: false }));
+  }, [loaded, showCity, cityData]);
+  const hiddenCount = showCity && hideNoData ? shown.filter((i) => i.noData).length : 0;
+  const ideas = useMemo(
+    () => sortIdeas(hiddenCount ? shown.filter((i) => !i.noData) : shown, sort),
+    [shown, hiddenCount, sort],
+  );
   // First click sorts the natural way (A→Z, otherwise highest first), second click reverses, third clears.
   const sortBy = (key: SortKey) => setSort((cur) => {
     const first = key === "keyword" ? "asc" : "desc";
@@ -191,6 +257,38 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
         </label>
       )}
 
+      {loaded && loaded.length > 0 && (
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+          {!city && <span>Pick a target city to see these ideas’ numbers in that city.</span>}
+          {city && (
+            <>
+              <div className="flex rounded border border-zinc-300 p-0.5 dark:border-zinc-700" role="group" aria-label="Numbers for">
+                {(["city", "us"] as const).map((v) => (
+                  <button key={v} className={`rounded px-1.5 ${view === v ? "bg-sky-600 text-white" : ""}`} onClick={() => setView(v)}
+                    title={v === "city" ? `Same data Keyword Check uses for ${cityLabel} (${source === "labs" ? "Labs, “keyword + city”" : "Google Ads targeted to the city"})` : "US-wide numbers for the idea"}>
+                    {v === "city" ? cityLabel : "US"}
+                  </button>
+                ))}
+              </div>
+              {view === "city" && !cityData && !cityState?.error && (cityState?.key === cityKey
+                ? <span>Checking {loaded.length} ideas in {cityLabel}…</span>
+                : (
+                  <button className="btn px-2 py-0.5 text-xs" onClick={() => cityKey && loadCity(cityKey, loaded.map((i) => i.keyword), city)}>
+                    Check in {cityLabel} {mode === "live" && `(~$${cityCost(source, loaded.length).toFixed(3)})`}
+                  </button>
+                ))}
+              {view === "city" && cityState?.key === cityKey && cityState.error && <span className="text-rose-600">{cityState.error}</span>}
+              {showCity && (
+                <label className="flex items-center gap-1" title={`Ideas Google has no data for in ${cityLabel} would show no data when you check them`}>
+                  <input type="checkbox" checked={hideNoData} onChange={(e) => setHideNoData(e.target.checked)} />
+                  Hide no data ({shown.filter((i) => i.noData).length})
+                </label>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="mt-2 flex-1 overflow-y-auto" style={{ maxHeight: "28rem" }}>
         {!seed && <p className="text-xs text-zinc-500">Add a keyword (press Enter after it) to see suggested and related keywords here.</p>}
         {seed && !auto && state?.seed !== seed && (
@@ -203,13 +301,18 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
         {state?.seed === seed && state.ideas && !state.ideas.length && (
           <p className="text-xs text-zinc-500">No ideas found for “{seed}”. Try a shorter or more general keyword.</p>
         )}
+        {showCity && loaded && loaded.length > 0 && !ideas.length && (
+          <p className="text-xs text-zinc-500">
+            None of these ideas has data in {cityLabel}. Untick “Hide no data”, switch to US, or try a broader keyword.
+          </p>
+        )}
         {ideas.length > 0 && (
           <table className="w-full text-xs">
             <thead className="text-left text-zinc-500">
               <tr>
                 <th className="w-5" />
                 <Th k="keyword" label="Keyword" right={false} title="Sort A→Z" />
-                <Th k="searchVolume" label="Vol." title="US monthly searches · click to sort" />
+                <Th k="searchVolume" label="Vol." title={`${showCity ? `Monthly searches in ${cityLabel}` : "US monthly searches"} · click to sort`} />
                 <Th k="cpc" label="CPC" title="Cost per click · click to sort" />
                 <Th k="ads" label="Ads" title="Google Ads competition: how many advertisers bid on this keyword · click to sort" />
                 <Th k="organic" label="Organic" title="Organic competition from keyword difficulty (0–100): Low < 30, Medium 30–59, High 60+ · click to sort" />
@@ -219,13 +322,15 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
               {(showAll ? ideas : ideas.slice(0, SHOW_ROWS)).map((i) => {
                 const added = existing.has(i.keyword);
                 return (
-                  <tr key={i.keyword} className={added ? "text-zinc-400" : "cursor-pointer hover:bg-white dark:hover:bg-zinc-900"}
+                  <tr key={i.keyword} className={`${added ? "text-zinc-400" : "cursor-pointer hover:bg-white dark:hover:bg-zinc-900"} ${i.noData ? "opacity-50" : ""}`}
+                    title={i.noData ? `No Google data for this keyword in ${cityLabel}` : undefined}
                     onClick={() => !added && toggle(i.keyword)}>
                     <td><input type="checkbox" disabled={added} checked={added || picked.has(i.keyword)} readOnly /></td>
                     <td className="py-0.5">
                       {i.keyword}
                       {i.kind === "related" && <span className="ml-1 rounded bg-violet-100 px-1 text-[10px] text-violet-800 dark:bg-violet-900/40 dark:text-violet-200" title="Related search (doesn't contain your keyword)">rel</span>}
                       {added && <span className="ml-1 text-[10px]">added</span>}
+                      {i.noData && <span className="ml-1 text-[10px] text-zinc-500">no data</span>}
                     </td>
                     <td className="text-right tabular-nums">{i.searchVolume?.toLocaleString() ?? "–"}</td>
                     <td className="text-right tabular-nums">{i.cpc != null ? `$${i.cpc.toFixed(2)}` : "–"}</td>

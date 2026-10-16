@@ -133,6 +133,11 @@ level: **High** means many advertisers bid on the keyword (a strong ads market).
 competition from keyword difficulty: **Low** (under 30) is easy to rank for, **Medium** 30–59, **High** 60+. Click a
 column header to sort (click again to reverse, a third time for the original order).
 
+With a **target city** picked, the panel re-checks the ideas in that city the same way **Check keywords** does (same
+ads data source, same cache), so the numbers match what the check will show — and checking them afterwards is free.
+Switch between the city and **US** numbers above the list. Ideas Google has no data for in the city are hidden
+(untick **Hide no data** to see them). City numbers cost ~$0.02 per idea list with Labs, ~$0.10 with Live Google Ads.
+
 **Templates.** **Save field as template…** stores the keywords in the field under a name (saving the same name again
 replaces it). Pick a template and click **Load** (replace the field) or **Add** (append). Templates are private to your
 account with Supabase, otherwise kept in this browser.

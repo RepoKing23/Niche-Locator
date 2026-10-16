@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseKeywordIdeas } from "@/lib/dataforseo";
 import { mockKeywordIdeas } from "@/lib/mock";
 import { LocalStore, type KV } from "@/lib/store/local";
-import { sortIdeas } from "@/components/KeywordIdeas";
+import { sortIdeas, withCityData } from "@/components/KeywordIdeas";
 
 describe("keyword ideas", () => {
   it("lists suggestions before related keywords, without the seed, duplicates or invalid keywords", () => {
@@ -61,5 +61,23 @@ describe("sorting keyword ideas", () => {
     expect(sortIdeas(ideas, { key: "organic", dir: "asc" }).map((i) => i.keyword)).toEqual(["c", "a", "b"]);
     expect(sortIdeas(ideas, { key: "keyword", dir: "asc" }).map((i) => i.keyword)).toEqual(["a", "b", "c"]);
     expect(sortIdeas(ideas, null)).toBe(ideas);
+  });
+});
+
+describe("keyword ideas in a city", () => {
+  it("shows the city numbers Keyword Check would find, and flags ideas without city data", () => {
+    const ideas = [
+      { keyword: "stair lift repair", kind: "suggestion", searchVolume: 1900, cpc: 18, competition: "HIGH", competitionIndex: 90, difficulty: 17 },
+      { keyword: "stair lift self installation", kind: "suggestion", searchVolume: 70, cpc: 7.65, competition: "HIGH", competitionIndex: 88, difficulty: 0 },
+    ] as const;
+    const out = withCityData([...ideas], {
+      ads: {
+        "stair lift repair": { keyword: "stair lift repair tampa", searchVolume: 30, cpc: 12.5, lowBid: null, highBid: null, competition: "MEDIUM", competitionIndex: 50, trend: [] },
+        "stair lift self installation": null,
+      },
+      kd: { "stair lift repair": 8, "stair lift self installation": null },
+    });
+    expect(out[0]).toMatchObject({ searchVolume: 30, cpc: 12.5, competition: "MEDIUM", competitionIndex: 50, difficulty: 8, noData: false });
+    expect(out[1]).toMatchObject({ searchVolume: null, cpc: null, competition: null, difficulty: null, noData: true });
   });
 });
