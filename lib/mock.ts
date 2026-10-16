@@ -109,7 +109,8 @@ export function mockKeywordDifficulty(keyword: string): number | null {
   return r < 0.3 ? null : Math.round(r * 70);
 }
 
-const IDEA_MODIFIERS = ["near me", "cost", "company", "services", "repair", "installation", "best", "cheap", "emergency", "prices"];
+const IDEA_MODIFIERS = ["near me", "cost", "company", "services", "repair", "installation", "best", "cheap", "emergency", "prices",
+  "contractors", "estimate", "local", "24 hour", "same day", "reviews", "quotes", "experts", "maintenance", "replacement"];
 
 /** Fake keyword ideas so the suggestion panel works in demo mode. */
 export function mockKeywordIdeas(seed: string) {
@@ -118,7 +119,7 @@ export function mockKeywordIdeas(seed: string) {
     const r = rand(`${keyword}|idea`);
     return {
       keyword,
-      kind: (i < 6 ? "suggestion" : "related") as "suggestion" | "related",
+      kind: (i % 2 === 0 ? "suggestion" : "related") as "suggestion" | "related",
       searchVolume: r < 0.15 ? null : Math.round((50 + r * 2000) / 10) * 10,
       cpc: Math.round((2 + rand(`${keyword}|cpc`) * 30) * 100) / 100,
       ...(() => {

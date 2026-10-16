@@ -8,6 +8,8 @@ import { organicLabel } from "@/lib/scoring";
 import { getStore } from "@/lib/store";
 
 const AUTO_KEY = "niche-locator:auto-ideas";
+/** Rows shown before "Show all". */
+const SHOW_ROWS = 20;
 /** Two Labs requests (suggestions + related, each billed ~$0.0125 in practice) and up to 30 ideas each. */
 const IDEAS_COST = 2 * (PRICES.labsRequest + 0.0025) + 60 * PRICES.labsKeyword;
 
@@ -97,6 +99,7 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [spent, setSpent] = useState(0);
   const [sort, setSort] = useState<Sort>(null);
+  const [showAll, setShowAll] = useState(false);
   // Ideas already loaded this session, so switching back to a seed is instant and free.
   const memo = useRef(new Map<string, { ideas: KeywordIdea[]; cached: boolean }>());
 
@@ -104,6 +107,7 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
 
   const load = async (s: string) => {
     setPicked(new Set());
+    setShowAll(false);
     const known = memo.current.get(s);
     if (known) return setState({ seed: s, ...known, error: "" });
     setState({ seed: s, ideas: null, error: "", cached: false });
@@ -187,7 +191,7 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
         </label>
       )}
 
-      <div className="mt-2 flex-1 overflow-y-auto" style={{ maxHeight: "16rem" }}>
+      <div className="mt-2 flex-1 overflow-y-auto" style={{ maxHeight: "28rem" }}>
         {!seed && <p className="text-xs text-zinc-500">Add a keyword (press Enter after it) to see suggested and related keywords here.</p>}
         {seed && !auto && state?.seed !== seed && (
           <button className="btn w-full text-xs" onClick={() => load(seed)}>
@@ -212,7 +216,7 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
               </tr>
             </thead>
             <tbody>
-              {ideas.map((i) => {
+              {(showAll ? ideas : ideas.slice(0, SHOW_ROWS)).map((i) => {
                 const added = existing.has(i.keyword);
                 return (
                   <tr key={i.keyword} className={added ? "text-zinc-400" : "cursor-pointer hover:bg-white dark:hover:bg-zinc-900"}
@@ -232,6 +236,11 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
               })}
             </tbody>
           </table>
+        )}
+        {ideas.length > SHOW_ROWS && (
+          <button className="mt-1 text-xs text-sky-700 hover:underline dark:text-sky-400" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? `Show top ${SHOW_ROWS}` : `Show all ${ideas.length} ideas`}
+          </button>
         )}
       </div>
 
