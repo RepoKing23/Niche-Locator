@@ -127,7 +127,9 @@ keyword list, and are cached for 30 days, so re-checking the same keywords in th
 *rel*), with US volume, CPC and keyword difficulty. Tick ideas and click **Add selected**, or **Add all**. Use the
 **for** menu to see ideas for another keyword in the field. Ideas cost ~$0.03 per keyword (DataForSEO Labs) and are
 cached for 30 days; untick **Auto** to fetch them only when you click. The **Ads** column is the Google Ads competition
-level: **High** means many advertisers bid on the keyword (a strong ads market).
+level: **High** means many advertisers bid on the keyword (a strong ads market). The **Organic** column is organic
+competition from keyword difficulty: **Low** (under 30) is easy to rank for, **Medium** 30–59, **High** 60+. Click a
+column header to sort (click again to reverse, a third time for the original order).
 
 **Templates.** **Save field as template…** stores the keywords in the field under a name (saving the same name again
 replaces it). Pick a template and click **Load** (replace the field) or **Add** (append). Templates are private to your

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseKeywordIdeas } from "@/lib/dataforseo";
 import { mockKeywordIdeas } from "@/lib/mock";
 import { LocalStore, type KV } from "@/lib/store/local";
+import { sortIdeas } from "@/components/KeywordIdeas";
 
 describe("keyword ideas", () => {
   it("lists suggestions before related keywords, without the seed, duplicates or invalid keywords", () => {
@@ -46,5 +47,19 @@ describe("keyword templates (LocalStore)", () => {
     ]);
     await store.deleteTemplate(a.id);
     expect((await store.listTemplates()).map((t) => t.name)).toEqual(["Plumbing"]);
+  });
+});
+
+describe("sorting keyword ideas", () => {
+  const idea = (keyword: string, searchVolume: number | null, difficulty: number | null) =>
+    ({ keyword, kind: "suggestion", searchVolume, cpc: null, competition: null, competitionIndex: null, difficulty }) as const;
+  const ideas = [idea("b", 100, null), idea("a", null, 40), idea("c", 900, 10)];
+
+  it("sorts either way with missing values last, and keeps the original order without a sort", () => {
+    expect(sortIdeas(ideas, { key: "searchVolume", dir: "desc" }).map((i) => i.keyword)).toEqual(["c", "b", "a"]);
+    expect(sortIdeas(ideas, { key: "searchVolume", dir: "asc" }).map((i) => i.keyword)).toEqual(["b", "c", "a"]);
+    expect(sortIdeas(ideas, { key: "organic", dir: "asc" }).map((i) => i.keyword)).toEqual(["c", "a", "b"]);
+    expect(sortIdeas(ideas, { key: "keyword", dir: "asc" }).map((i) => i.keyword)).toEqual(["a", "b", "c"]);
+    expect(sortIdeas(ideas, null)).toBe(ideas);
   });
 });

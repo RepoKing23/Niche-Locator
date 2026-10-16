@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PRICES } from "@/lib/api";
 import type { KeywordIdea } from "@/lib/dataforseo";
 import { getKeywordIdeas } from "@/lib/fetchers";
+import { organicLabel } from "@/lib/scoring";
 import { getStore } from "@/lib/store";
 
 const AUTO_KEY = "niche-locator:auto-ideas";
@@ -33,6 +34,48 @@ function AdsLevel({ idea }: { idea: KeywordIdea }) {
   return <span className={`rounded px-1 text-[10px] font-medium ${ADS_TONE[idea.competition]}`} title={title}>{label}</span>;
 }
 
+const ORGANIC_TONE = {
+  Low: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+  Medium: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+  High: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
+} as const;
+
+/** Organic competition from keyword difficulty: Low (<30) is easy to rank for, High (60+) is hard. */
+function OrganicLevel({ difficulty }: { difficulty: number | null }) {
+  const label = organicLabel(difficulty);
+  if (label === "Unknown") return <span title="No keyword difficulty data">–</span>;
+  return (
+    <span className="whitespace-nowrap" title={`Keyword difficulty ${difficulty}/100`}>
+      <span className={`rounded px-1 text-[10px] font-medium ${ORGANIC_TONE[label]}`}>{label === "Medium" ? "Med" : label}</span>
+      <span className="ml-1 inline-block w-4 tabular-nums">{difficulty}</span>
+    </span>
+  );
+}
+
+type SortKey = "keyword" | "searchVolume" | "cpc" | "ads" | "organic";
+type Sort = { key: SortKey; dir: "asc" | "desc" } | null;
+
+const SORT_VALUE: Record<SortKey, (i: KeywordIdea) => string | number | null> = {
+  keyword: (i) => i.keyword,
+  searchVolume: (i) => i.searchVolume,
+  cpc: (i) => i.cpc,
+  ads: (i) => i.competitionIndex,
+  organic: (i) => i.difficulty,
+};
+
+/** Sorted copy; keywords without a value always go last. */
+export function sortIdeas(ideas: KeywordIdea[], sort: Sort): KeywordIdea[] {
+  if (!sort) return ideas;
+  const get = SORT_VALUE[sort.key];
+  const sign = sort.dir === "asc" ? 1 : -1;
+  return [...ideas].sort((a, b) => {
+    const x = get(a);
+    const y = get(b);
+    if (x == null || y == null) return x == null ? (y == null ? 0 : 1) : -1;
+    return sign * (typeof x === "string" ? x.localeCompare(y as string) : x - (y as number));
+  });
+}
+
 type State = { seed: string; ideas: KeywordIdea[] | null; error: string; cached: boolean };
 
 /**
@@ -53,6 +96,7 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
   const [loading, setLoading] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [spent, setSpent] = useState(0);
+  const [sort, setSort] = useState<Sort>(null);
   // Ideas already loaded this session, so switching back to a seed is instant and free.
   const memo = useRef(new Map<string, { ideas: KeywordIdea[]; cached: boolean }>());
 
@@ -92,7 +136,22 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
     }
   };
 
-  const ideas = state?.seed === seed ? state.ideas ?? [] : [];
+  const loaded = state?.seed === seed ? state.ideas : null;
+  const ideas = useMemo(() => sortIdeas(loaded ?? [], sort), [loaded, sort]);
+  // First click sorts the natural way (A→Z, otherwise highest first), second click reverses, third clears.
+  const sortBy = (key: SortKey) => setSort((cur) => {
+    const first = key === "keyword" ? "asc" : "desc";
+    if (cur?.key !== key) return { key, dir: first };
+    return cur.dir === first ? { key, dir: first === "asc" ? "desc" : "asc" } : null;
+  });
+  const Th = ({ k, label, title, right = true }: { k: SortKey; label: string; title?: string; right?: boolean }) => (
+    <th className={`font-normal ${right ? "text-right" : ""}`} title={title}
+      aria-sort={sort?.key === k ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button className="whitespace-nowrap hover:text-zinc-900 dark:hover:text-zinc-100" onClick={() => sortBy(k)}>
+        {label}{sort?.key === k ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}
+      </button>
+    </th>
+  );
   const addable = ideas.filter((i) => !existing.has(i.keyword));
   const toggle = (k: string) => setPicked((prev) => {
     const next = new Set(prev);
@@ -145,11 +204,11 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
             <thead className="text-left text-zinc-500">
               <tr>
                 <th className="w-5" />
-                <th className="font-normal">Keyword</th>
-                <th className="text-right font-normal" title="US monthly searches">Vol.</th>
-                <th className="text-right font-normal">CPC</th>
-                <th className="text-right font-normal" title="Google Ads competition: how many advertisers bid on this keyword">Ads</th>
-                <th className="text-right font-normal" title="Keyword difficulty (0–100)">KD</th>
+                <Th k="keyword" label="Keyword" right={false} title="Sort A→Z" />
+                <Th k="searchVolume" label="Vol." title="US monthly searches · click to sort" />
+                <Th k="cpc" label="CPC" title="Cost per click · click to sort" />
+                <Th k="ads" label="Ads" title="Google Ads competition: how many advertisers bid on this keyword · click to sort" />
+                <Th k="organic" label="Organic" title="Organic competition from keyword difficulty (0–100): Low < 30, Medium 30–59, High 60+ · click to sort" />
               </tr>
             </thead>
             <tbody>
@@ -167,7 +226,7 @@ export default function KeywordIdeas({ seed, seeds, existing, onSeedChange, onAd
                     <td className="text-right tabular-nums">{i.searchVolume?.toLocaleString() ?? "–"}</td>
                     <td className="text-right tabular-nums">{i.cpc != null ? `$${i.cpc.toFixed(2)}` : "–"}</td>
                     <td className="text-right"><AdsLevel idea={i} /></td>
-                    <td className="text-right tabular-nums">{i.difficulty ?? "–"}</td>
+                    <td className="text-right"><OrganicLevel difficulty={i.difficulty} /></td>
                   </tr>
                 );
               })}
