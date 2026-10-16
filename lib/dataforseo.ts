@@ -422,3 +422,58 @@ export async function fetchKeywordsInCity(keywords: string[], location: string) 
   }
   return { ads, cost };
 }
+
+// ---- Keyword ideas for the Keyword Check side panel ----
+
+/** Ideas per source: Labs bills ~$0.01 per request + $0.0001 per returned keyword. */
+export const SUGGEST_LIMIT = 30;
+
+export type KeywordIdea = {
+  keyword: string;
+  /** "suggestion" = contains the seed (long-tail); "related" = Google's "searches related to". */
+  kind: "suggestion" | "related";
+  searchVolume: number | null;
+  cpc: number | null;
+  difficulty: number | null;
+};
+
+type RelatedKeywordsItem = { keyword_data?: LabsOverviewItem | null };
+
+const toIdea = (i: LabsOverviewItem, kind: KeywordIdea["kind"]): KeywordIdea => ({
+  keyword: cleanKeyword(i.keyword),
+  kind,
+  searchVolume: i.keyword_info?.search_volume ?? null,
+  cpc: i.keyword_info?.cpc ?? null,
+  difficulty: i.keyword_properties?.keyword_difficulty ?? null,
+});
+
+/** Suggestions first, then related keywords; drops the seed, duplicates and keywords Google Ads won't accept. */
+export function parseKeywordIdeas(seed: string, suggestions: LabsOverviewItem[], related: RelatedKeywordsItem[]): KeywordIdea[] {
+  const seen = new Set([cleanKeyword(seed)]);
+  const ideas = [
+    ...suggestions.map((i) => toIdea(i, "suggestion")),
+    ...related.flatMap((r) => (r.keyword_data ? [toIdea(r.keyword_data, "related")] : [])),
+  ];
+  return ideas.filter((i) => {
+    if (!validAdsKeyword(i.keyword) || seen.has(i.keyword)) return false;
+    seen.add(i.keyword);
+    return true;
+  });
+}
+
+/** Long-tail suggestions + related searches for one keyword (US, by search volume). ~$0.02 + $0.0001/idea. */
+export async function fetchKeywordIdeas(seed: string) {
+  const common = { keyword: seed, location_code: US_LOCATION_CODE, language_code: "en", limit: SUGGEST_LIMIT };
+  const [s, r] = await Promise.all([
+    post<{ items: LabsOverviewItem[] | null }>("/dataforseo_labs/google/keyword_suggestions/live", {
+      ...common, order_by: ["keyword_info.search_volume,desc"],
+    }),
+    post<{ items: RelatedKeywordsItem[] | null }>("/dataforseo_labs/google/related_keywords/live", {
+      ...common, depth: 1, order_by: ["keyword_data.keyword_info.search_volume,desc"],
+    }),
+  ]);
+  return {
+    ideas: parseKeywordIdeas(seed, s.result.flatMap((x) => x.items ?? []), r.result.flatMap((x) => x.items ?? [])),
+    cost: s.cost + r.cost,
+  };
+}

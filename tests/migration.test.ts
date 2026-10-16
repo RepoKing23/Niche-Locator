@@ -94,4 +94,15 @@ describe("supabase migration", () => {
     await expect(as(USER_A, "insert into api_cache (kind, key, data) values ('bogus', 'x', '1')")).rejects.toThrow();
     await as(USER_A, "insert into api_cache (kind, key, data) values ('ads', 'plumber|tampa-fl', '{\"cpc\": 44.64}')");
   });
+
+  it("keeps keyword templates private and upserts by name", async () => {
+    await as(USER_A, "insert into keyword_templates (name, keywords) values ('Stairs', '{stair lift,stair repair}')");
+    await as(USER_A, `insert into keyword_templates (name, keywords) values ('Stairs', '{stair lift}')
+      on conflict (user_id, name) do update set keywords = excluded.keywords`);
+    await as(USER_B, "insert into keyword_templates (name, keywords) values ('Stairs', '{ramp}')");
+    const mine = await as(USER_A, "select name, keywords from keyword_templates");
+    expect(mine.rows).toEqual([{ name: "Stairs", keywords: ["stair lift"] }]);
+    await as(USER_B, "delete from keyword_templates");
+    expect((await as(USER_A, "select * from keyword_templates")).rows).toHaveLength(1);
+  });
 });

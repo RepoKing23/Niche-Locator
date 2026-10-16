@@ -122,6 +122,16 @@ Keywords Google Ads has no data for show **No ads** (no ads market). Summary car
 keywords and Targets. Results use the same table (filters, High Ads / Low Organic, Copy / CSV / Excel), can be saved to a
 keyword list, and are cached for 30 days, so re-checking the same keywords in the same city is free.
 
+**Keyword ideas.** Each time you finish a keyword (press Enter, type a comma, or click outside the field), the
+**Keyword ideas** panel next to the field shows long-tail suggestions that contain it and related searches (tagged
+*rel*), with US volume, CPC and keyword difficulty. Tick ideas and click **Add selected**, or **Add all**. Use the
+**for** menu to see ideas for another keyword in the field. Ideas cost ~$0.03 per keyword (DataForSEO Labs) and are
+cached for 30 days; untick **Auto** to fetch them only when you click.
+
+**Templates.** **Save field as template…** stores the keywords in the field under a name (saving the same name again
+replaces it). Pick a template and click **Load** (replace the field) or **Add** (append). Templates are private to your
+account with Supabase, otherwise kept in this browser.
+
 ## Keyword lists
 
 Tick rows on the Research tab and click **Save to list ▾**. Pick an existing list or type a name to create one.
@@ -195,7 +205,7 @@ their own lists and reports (enforced by row-level security in the database).
    - with the Supabase GitHub integration, set the Supabase directory to `supabase` and a production branch
      (this repo has no `main` yet). The integration applies `supabase/migrations/*.sql` when that branch changes, or
    - paste each file in `supabase/migrations/` in order (`20260929…_keyword_lists.sql`,
-     `20260930…_api_cache.sql`, `20261001…_api_cache_ads.sql`) into the Supabase **SQL Editor** and run it.
+     `20260930…_api_cache.sql`, `20261001…_api_cache_ads.sql`, `20261016…_keyword_templates.sql`) into the Supabase **SQL Editor** and run it.
 2. **Keys:** from Project Settings → API, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable key; `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` also works)
    in `.env.local` (and in Vercel's environment variables).
 3. **Auth:** Authentication → Providers → Email is on by default. Under Authentication → URL Configuration,

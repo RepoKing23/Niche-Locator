@@ -174,3 +174,12 @@ export type SavedReportMeta = {
   cityCount: number;
   createdAt: string;
 };
+
+/** A named, reusable set of keywords for the Keyword Check tab. */
+export type KeywordTemplate = {
+  id: string;
+  name: string;
+  keywords: string[];
+  createdAt: string;
+  updatedAt: string;
+};

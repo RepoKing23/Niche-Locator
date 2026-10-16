@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "./DataTable";
 import AdsSourcePicker, { useAdsSource } from "./AdsSourcePicker";
+import KeywordIdeas from "./KeywordIdeas";
+import KeywordTemplates from "./KeywordTemplates";
 import SaveToList from "./SaveToList";
 import { PRICES, QUEUE_POLL_MS } from "@/lib/api";
 import { CITIES, type City } from "@/lib/cities";
@@ -48,6 +50,36 @@ export default function KeywordChecker({ mode }: { mode: "live" | "demo" }) {
     const all = [...new Set(text.split(/[\n,]+/).map(cleanKeyword).filter(Boolean))];
     return { valid: all.filter(validKeyword).slice(0, MAX_KEYWORDS), invalid: all.filter((k) => !validKeyword(k)), total: all.length };
   }, [text]);
+  const existing = useMemo(() => new Set(parsed.valid), [parsed]);
+
+  // Ideas follow the last keyword typed. A keyword counts once it's followed by Enter/comma or the field loses focus,
+  // so half-typed words aren't looked up. Keywords added from ideas or templates don't trigger new lookups.
+  const [ideaSeed, setIdeaSeed] = useState<string | null>(null);
+  const [typing, setTyping] = useState(false);
+  const knownRef = useRef(new Set<string>());
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const parts = text.split(/[\n,]+/);
+      const finished = typing && !/[\n,]\s*$/.test(text) ? parts.slice(0, -1) : parts;
+      const added = finished.map(cleanKeyword).filter((k) => validKeyword(k) && !knownRef.current.has(k));
+      added.forEach((k) => knownRef.current.add(k));
+      if (added.length) setIdeaSeed(added[added.length - 1]);
+    }, 700);
+    return () => clearTimeout(t);
+  }, [text, typing]);
+
+  const addKeywords = (keywords: string[], replace = false) => {
+    keywords.forEach((k) => knownRef.current.add(k));
+    setText((prev) => {
+      if (replace) return `${keywords.join("\n")}\n`;
+      const have = new Set(prev.split(/[\n,]+/).map(cleanKeyword));
+      const fresh = keywords.filter((k) => !have.has(k));
+      if (!fresh.length) return prev;
+      const base = prev.replace(/[\s,]+$/, "");
+      return `${base}${base ? "\n" : ""}${fresh.join("\n")}\n`;
+    });
+  };
+
   const city = CITY_BY_LABEL.get(cityInput.trim().toLowerCase()) ?? null;
 
   const source = useAdsSource();
@@ -135,15 +167,24 @@ export default function KeywordChecker({ mode }: { mode: "live" | "demo" }) {
   return (
     <div className="space-y-5">
       <section className="grid gap-4 rounded-lg border border-zinc-200 bg-white p-4 md:grid-cols-3 dark:border-zinc-800 dark:bg-zinc-900">
-        <label className="block text-sm font-medium md:col-span-2">
-          Keywords <span className="font-normal text-zinc-500">(one per line or comma-separated, up to {MAX_KEYWORDS})</span>
-          <textarea className="input mt-1 h-48 w-full font-mono text-xs" value={text} onChange={(e) => setText(e.target.value)}
-            placeholder={"stair lift installation\nstair lift repair\ncurved stair lift cost\nwheelchair ramp installer"} />
-          <span className="mt-1 block text-xs font-normal text-zinc-500">
-            {n} keyword{n === 1 ? "" : "s"}{parsed.invalid.length > 0 && ` · ${parsed.invalid.length} skipped (over 80 characters or 10 words)`}
-            {parsed.total > MAX_KEYWORDS && ` · only the first ${MAX_KEYWORDS} are checked`}
-          </span>
-        </label>
+        <div className="space-y-2 md:col-span-2">
+          <KeywordTemplates keywords={parsed.valid} onLoad={addKeywords} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-medium">
+              Keywords <span className="font-normal text-zinc-500">(one per line or comma-separated, up to {MAX_KEYWORDS})</span>
+              <textarea className="input mt-1 h-48 w-full font-mono text-xs" value={text}
+                onChange={(e) => { setText(e.target.value); setTyping(true); }}
+                onFocus={() => setTyping(true)} onBlur={() => setTyping(false)}
+                placeholder={"stair lift installation\nstair lift repair\ncurved stair lift cost\nwheelchair ramp installer"} />
+              <span className="mt-1 block text-xs font-normal text-zinc-500">
+                {n} keyword{n === 1 ? "" : "s"}{parsed.invalid.length > 0 && ` · ${parsed.invalid.length} skipped (over 80 characters or 10 words)`}
+                {parsed.total > MAX_KEYWORDS && ` · only the first ${MAX_KEYWORDS} are checked`}
+              </span>
+            </label>
+            <KeywordIdeas seed={ideaSeed} seeds={parsed.valid} existing={existing} onSeedChange={setIdeaSeed}
+              onAdd={(ks) => addKeywords(ks)} mode={mode} />
+          </div>
+        </div>
         <div className="flex flex-col gap-3">
           <label className="block text-sm font-medium">
             Target city

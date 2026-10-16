@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { chunk } from "../keywords";
 import { CACHE_MAX_AGE_DAYS, type CacheKind } from "../cache";
-import type { KeywordList, ListItem, NewListItem, Report, SavedReportMeta } from "../types";
+import type { KeywordList, KeywordTemplate, ListItem, NewListItem, Report, SavedReportMeta } from "../types";
 import type { Store } from "./types";
 
 type ListRow = {
@@ -21,6 +21,12 @@ const toList = (r: ListRow): KeywordList => ({
 const toItem = (r: ItemRow): ListItem => ({
   id: r.id, listId: r.list_id, niche: r.niche, cityId: r.city_id, keyword: r.keyword,
   row: r.row, serp: r.serp, note: r.note, createdAt: r.created_at,
+});
+
+type TemplateRow = { id: string; name: string; keywords: string[]; created_at: string; updated_at: string };
+
+const toTemplate = (r: TemplateRow): KeywordTemplate => ({
+  id: r.id, name: r.name, keywords: r.keywords, createdAt: r.created_at, updatedAt: r.updated_at,
 });
 
 function check<T>(res: { data: T; error: { message: string } | null }): T {
@@ -115,6 +121,21 @@ export class SupabaseStore implements Store {
 
   async deleteReport(id: string) {
     check(await this.db.from("reports").delete().eq("id", id));
+  }
+
+  async listTemplates() {
+    const rows = check(await this.db.from("keyword_templates").select("*").order("name"));
+    return (rows as TemplateRow[]).map(toTemplate);
+  }
+
+  async saveTemplate(name: string, keywords: string[]) {
+    const row = check(await this.db.from("keyword_templates")
+      .upsert({ name: name.trim(), keywords }, { onConflict: "user_id,name" }).select().single());
+    return toTemplate(row as TemplateRow);
+  }
+
+  async deleteTemplate(id: string) {
+    check(await this.db.from("keyword_templates").delete().eq("id", id));
   }
 
   async getCached(kind: CacheKind, keys: string[], maxAgeDays = CACHE_MAX_AGE_DAYS) {

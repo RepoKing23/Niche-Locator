@@ -1,10 +1,11 @@
 import { CACHE_MAX_AGE_DAYS, MemoryCache, fresh, type CacheBackend, type CacheKind } from "../cache";
-import type { KeywordList, ListItem, NewListItem, Report, SavedReportMeta } from "../types";
+import type { KeywordList, KeywordTemplate, ListItem, NewListItem, Report, SavedReportMeta } from "../types";
 import { itemKey, type Store } from "./types";
 
 const LISTS_KEY = "niche-locator:lists";
 const ITEMS_KEY = (listId: string) => `niche-locator:items:${listId}`;
 const REPORTS_KEY = "niche-locator:reports";
+const TEMPLATES_KEY = "niche-locator:templates";
 const MAX_REPORTS = 8;
 
 /** Minimal storage surface so tests can pass an in-memory map. */
@@ -168,5 +169,23 @@ export class LocalStore implements Store {
 
   async deleteReport(id: string) {
     this.write(REPORTS_KEY, this.read<Report[]>(REPORTS_KEY, []).filter((r) => r.id !== id));
+  }
+
+  async listTemplates() {
+    return this.read<KeywordTemplate[]>(TEMPLATES_KEY, []).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async saveTemplate(name: string, keywords: string[]) {
+    const templates = this.read<KeywordTemplate[]>(TEMPLATES_KEY, []);
+    const existing = templates.find((t) => t.name.toLowerCase() === name.trim().toLowerCase());
+    const template: KeywordTemplate = existing
+      ? { ...existing, keywords, updatedAt: now() }
+      : { id: uid(), name: name.trim(), keywords, createdAt: now(), updatedAt: now() };
+    this.write(TEMPLATES_KEY, [...templates.filter((t) => t.id !== template.id), template]);
+    return template;
+  }
+
+  async deleteTemplate(id: string) {
+    this.write(TEMPLATES_KEY, this.read<KeywordTemplate[]>(TEMPLATES_KEY, []).filter((t) => t.id !== id));
   }
 }

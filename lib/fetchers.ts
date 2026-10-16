@@ -6,7 +6,7 @@
 import { SERP_BATCH, SERP_PARALLEL, postJson, sleep } from "./api";
 import { cacheKey, type CacheKind } from "./cache";
 import { chunk } from "./keywords";
-import type { AdsSource } from "./dataforseo";
+import type { AdsSource, KeywordIdea } from "./dataforseo";
 import type { Store } from "./store/types";
 import type { KeywordMetrics, LocalDemand, SerpInfo } from "./types";
 
@@ -284,4 +284,17 @@ function groupBy<T>(items: T[], key: (t: T) => string): T[][] {
   const m = new Map<string, T[]>();
   items.forEach((i) => m.set(key(i), [...(m.get(key(i)) ?? []), i]));
   return [...m.values()];
+}
+
+// ---------- Keyword ideas for the Keyword Check side panel ----------
+
+/** Suggestions + related keywords for one seed keyword (cache first; ideas are US-wide). */
+export async function getKeywordIdeas(seed: string, opts: FetchOptions): Promise<{ ideas: KeywordIdea[]; cost: number; cached: boolean }> {
+  // Cached under "kd" with a distinct key prefix (same pattern as Keyword Check's "checklabs:" keys).
+  const keys = new Map([[seed, `ideas:${seed}`]]);
+  const hit = (await fromCache<KeywordIdea[]>(opts, "kd", keys)).get(seed);
+  if (hit) return { ideas: hit, cost: 0, cached: true };
+  const r = await postJson<{ ideas: KeywordIdea[]; cost: number }>("/api/suggest", { keyword: seed });
+  await toCache(opts, "kd", [[keys.get(seed)!, r.ideas]]);
+  return { ideas: r.ideas, cost: r.cost, cached: false };
 }
