@@ -9,11 +9,11 @@ export const dynamic = "force-dynamic";
  * between their pages, so MainShell keeps both tabs (and their results, filters and any
  * running check) alive; the pages themselves render nothing.
  */
-export default function MainLayout({ children }: LayoutProps<"/">) {
+export default async function MainLayout({ children }: LayoutProps<"/">) {
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-5 px-4 py-6">
       <AppHeader />
-      <MainShell mode={hasCredentials() ? "live" : "demo"} />
+      <MainShell mode={(await hasCredentials()) ? "live" : "demo"} />
       {children}
     </div>
   );

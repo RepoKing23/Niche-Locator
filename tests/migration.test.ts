@@ -94,4 +94,15 @@ describe("supabase migration", () => {
     await expect(as(USER_A, "insert into api_cache (kind, key, data) values ('bogus', 'x', '1')")).rejects.toThrow();
     await as(USER_A, "insert into api_cache (kind, key, data) values ('ads', 'plumber|tampa-fl', '{\"cpc\": 44.64}')");
   });
+
+  it("keeps one shared DataForSEO login that any signed-in user can replace", async () => {
+    await as(USER_A, "insert into dataforseo_credentials (login, password) values ('a@x.com', 'p1')");
+    await as(USER_B, `insert into dataforseo_credentials (id, login, password) values (1, 'b@x.com', 'p2')
+      on conflict (id) do update set login = excluded.login, password = excluded.password`);
+    const rows = (await as(USER_A, "select login, password from dataforseo_credentials")).rows;
+    expect(rows).toEqual([{ login: "b@x.com", password: "p2" }]);
+    await expect(as(USER_A, "insert into dataforseo_credentials (id, login, password) values (2, 'c', 'p')")).rejects.toThrow();
+    await as(USER_A, "delete from dataforseo_credentials");
+    expect((await as(USER_B, "select * from dataforseo_credentials")).rows).toHaveLength(0);
+  });
 });

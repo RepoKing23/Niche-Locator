@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   if (!city) return Response.json({ error: "Unknown city" }, { status: 400 });
   const variants = parsed.data.variants.map(cleanKeyword);
   try {
-    const { metrics, cost } = hasCredentials()
+    const { metrics, cost } = (await hasCredentials())
       ? await fetchLocal(variants, city.name, dataForSeoLocationName(city))
       : mockLocal(variants, city);
     const c = combineMetrics(metrics);

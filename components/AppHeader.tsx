@@ -1,10 +1,11 @@
 import Link from "next/link";
+import CreditsWidget from "./CreditsWidget";
 import NavTabs from "./NavTabs";
 import SignOutButton from "./SignOutButton";
 import { supabaseConfigured } from "@/lib/supabase/config";
 import { currentUserEmail } from "@/lib/supabase/server";
 
-/** Top bar: app name, page tabs, where data is stored, and the signed-in user. */
+/** Top bar: app name, page tabs, DataForSEO account and credit, where data is stored, and the signed-in user. */
 export default async function AppHeader() {
   const email = await currentUserEmail();
   return (
@@ -16,7 +17,8 @@ export default async function AppHeader() {
         </div>
         <NavTabs />
       </div>
-      <div className="flex items-center gap-3 text-sm">
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <CreditsWidget settingsHref={supabaseConfigured ? "/account#dataforseo" : undefined} />
         {supabaseConfigured ? (
           <>
             <Link href="/account" className="text-zinc-600 hover:underline dark:text-zinc-400" title="Account settings">{email}</Link>

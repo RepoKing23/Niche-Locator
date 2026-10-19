@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localKeywords, parseDifficulty, parseSearchVolume, parseSerp, type SearchVolumeItem, type SerpItem } from "@/lib/dataforseo";
+import { localKeywords, parseDifficulty, parseSearchVolume, parseSerp, parseUserData, type SearchVolumeItem, type SerpItem } from "@/lib/dataforseo";
 import { buildSnapshot } from "@/lib/scoring";
 import serpItems from "./fixtures/austin-serp.json";
 import svItems from "./fixtures/us-search-volume.json";
@@ -65,5 +65,15 @@ describe("parseSerp (real Austin SERP for 'stair installer')", () => {
 describe("localKeywords", () => {
   it("adds city-modified versions of each variant", () => {
     expect(localKeywords(["stair installer"], "St. Louis")).toEqual(["stair installer", "stair installer st louis"]);
+  });
+});
+
+describe("parseUserData", () => {
+  it("reads the login and remaining balance", () => {
+    expect(parseUserData([{ login: "me@example.com", money: { balance: 12.3456 } }])).toEqual({ login: "me@example.com", balance: 12.3456 });
+  });
+
+  it("copes with a missing balance", () => {
+    expect(parseUserData([{ login: "me@example.com", money: null }])).toEqual({ login: "me@example.com", balance: null });
   });
 });

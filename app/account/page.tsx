@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
+import DataForSeoSettings from "@/components/DataForSeoSettings";
 import SignOutButton from "@/components/SignOutButton";
 import { supabaseConfigured } from "@/lib/supabase/config";
 import { currentUserEmail } from "@/lib/supabase/server";
@@ -14,7 +15,7 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
   if (!email) redirect("/login?next=/account");
   const { reset } = await searchParams;
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 px-4">
+    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 px-4 py-8">
       <div>
         <Link href="/" className="text-sm text-sky-700 underline dark:text-sky-400">← Back to Niche Locator</Link>
         <h1 className="mt-2 text-2xl font-bold">Account</h1>
@@ -22,6 +23,7 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
       </div>
       {reset === "1" && <p className="text-sm text-emerald-700 dark:text-emerald-400">Choose a new password below.</p>}
       <ChangePasswordForm />
+      <DataForSeoSettings />
       <div><SignOutButton /></div>
     </main>
   );
