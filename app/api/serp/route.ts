@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   if (!parsed.success) return Response.json({ error: "Invalid request" }, { status: 400 });
   const keyword = cleanKeyword(parsed.data.keyword);
   const cities = parsed.data.cityIds.map(findCity).filter((c): c is City => Boolean(c));
-  const live = hasCredentials();
+  const live = await hasCredentials();
 
   const results: Record<string, SerpInfo> = {};
   const errors: Record<string, string> = {};

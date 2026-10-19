@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   const keyword = cleanKeyword(parsed.data.keyword);
   const cities = parsed.data.cityIds.map(findCity).filter((c): c is City => Boolean(c));
 
-  if (!hasCredentials()) {
+  if (!(await hasCredentials())) {
     // Demo: fake task ids; collect returns mock SERPs.
     return Response.json({ tasks: cities.map((c) => ({ cityId: c.id, taskId: `demo:${c.id}` })), errors: {}, cost: 0 });
   }

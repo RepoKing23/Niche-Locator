@@ -1,3 +1,4 @@
+import { getCredentials } from "./credentials";
 import { isWeakDomain, normalizeDomain } from "./directories";
 import { cleanKeyword } from "./keywords";
 import { serpDifficulty } from "./scoring";
@@ -29,8 +30,9 @@ export type AdsSource = "labs" | "ads";
 /** Google Ads live endpoints allow 12 requests/minute per account. */
 export const GOOGLE_ADS_MIN_INTERVAL_MS = 5200;
 
-export function hasCredentials(): boolean {
-  return Boolean(process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD);
+/** True when a DataForSEO login is saved on the Account page or set in the env vars. */
+export async function hasCredentials(): Promise<boolean> {
+  return Boolean(await getCredentials());
 }
 
 export type ApiTask<T> = {
@@ -43,10 +45,12 @@ type ApiResponse<T> = { status_code: number; status_message: string; cost?: numb
 export class DataForSeoError extends Error {}
 
 /** Authenticated request with retries on network errors, 5xx and rate limits. Returns the raw response. */
-async function request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<ApiResponse<T>> {
-  const auth = Buffer.from(
-    `${process.env.DATAFORSEO_LOGIN}:${process.env.DATAFORSEO_PASSWORD}`,
-  ).toString("base64");
+async function request<T>(
+  method: "GET" | "POST", path: string, body?: unknown, creds?: { login: string; password: string },
+): Promise<ApiResponse<T>> {
+  const c = creds ?? (await getCredentials());
+  if (!c) throw new DataForSeoError("No DataForSEO login is set.");
+  const auth = Buffer.from(`${c.login}:${c.password}`).toString("base64");
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -421,4 +425,23 @@ export async function fetchKeywordsInCity(keywords: string[], location: string) 
     }
   }
   return { ads, cost };
+}
+
+// ---- Account: connected login and remaining balance (free endpoint) ----
+
+export type AccountInfo = { login: string; balance: number | null };
+
+type UserDataResult = { login?: string; money?: { balance?: number | null } | null };
+
+export function parseUserData(results: UserDataResult[] | null | undefined): AccountInfo {
+  const r = results?.[0];
+  return { login: r?.login ?? "", balance: r?.money?.balance ?? null };
+}
+
+/** DataForSEO login and balance (USD) for the given or current credentials. Calling this endpoint is free. */
+export async function fetchAccount(creds?: { login: string; password: string }): Promise<AccountInfo> {
+  const json = await request<UserDataResult>("GET", "/appendix/user_data", undefined, creds);
+  const t = json.tasks?.[0];
+  if (t && t.status_code !== 20000) throw new DataForSeoError(`DataForSEO: ${t.status_message}`);
+  return parseUserData(t?.result);
 }

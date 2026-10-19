@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   const keyword = cleanKeyword(parsed.data.keyword);
   const cities = parsed.data.cityIds.map(findCity).filter((c): c is City => Boolean(c));
 
-  if (!hasCredentials()) {
+  if (!(await hasCredentials())) {
     return Response.json({
       results: Object.fromEntries(cities.map((c) => [c.id, mockCityAds(keyword, c)])),
       kd: parsed.data.source === "labs" ? Object.fromEntries(cities.map((c) => [c.id, mockCityDifficulty(keyword, c)])) : undefined,

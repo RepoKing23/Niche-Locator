@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Enter a niche and at least one keyword variant." }, { status: 400 });
   const variants = [...new Set(parsed.data.variants.map(cleanKeyword).filter((v) => v.length >= 2))];
-  const live = hasCredentials();
+  const live = await hasCredentials();
   try {
     const { metrics, cost } = live ? await fetchNiche(variants, parsed.data.source) : mockNiche(variants);
     return Response.json({

@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   let kd: Record<string, number | null> = {};
   let cost = 0;
   try {
-    if (!hasCredentials()) {
+    if (!(await hasCredentials())) {
       ads = Object.fromEntries(keywords.map((k) => [k, mockKeywordInCity(k, city)]));
       if (parsed.data.withKd) kd = Object.fromEntries(keywords.map((k) => [k, mockKeywordDifficulty(k)]));
     } else if (parsed.data.source === "labs") {

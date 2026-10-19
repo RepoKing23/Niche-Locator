@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   const results: Record<string, SerpInfo> = {};
   const pending: string[] = [];
   const errors: Record<string, string> = {};
-  const live = hasCredentials();
+  const live = await hasCredentials();
   await Promise.all(parsed.data.tasks.map(async ({ cityId, taskId }) => {
     const city = findCity(cityId);
     if (!city) return void (errors[cityId] = "Unknown city");
